@@ -39,7 +39,6 @@ def run_client(num_segments=20):
         selected_repr = policy.select_quality(last_throughput, current_buffer, manifest['representations'])
         
         # 2. Download segment
-        print(f"[{i:02d}] Downloading {selected_repr['quality']}...", end="\r")
         content, download_time, throughput, jitter = network.download_segment(selected_repr['url_path'])
         
         if content is None:
@@ -53,6 +52,10 @@ def run_client(num_segments=20):
         # 4. Handle metrics
         last_throughput = throughput
         
+        # Update terminal status (one line)
+        status = f"Seg {i:03d}/{num_segments:03d} | Qualidade: {selected_repr['quality']:5} | Vazão: {throughput:7.2f} kbps | Buffer: {buffer.get_level():5.2f}s "
+        print(f"\r{status}", end="", flush=True)
+
         metric_data = {
             'segment': i,
             'server_id': network.current_server['id'],
@@ -70,9 +73,6 @@ def run_client(num_segments=20):
         }
         metrics.log_metric(metric_data)
         
-        # Simulate time passing if buffer is too full? 
-        # In a real player, we'd wait if buffer > max_buffer.
-        # For this project, we can just download as fast as possible or add a small delay.
         time.sleep(0.1)
 
     print(f"\nStreaming finished. Metrics saved to {output_csv}")

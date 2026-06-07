@@ -46,6 +46,17 @@ def generate_graphs(csv_path, output_dir):
     for threshold in bitrate_thresholds:
         ax1.axhline(y=threshold, color='gray', linestyle=':', alpha=0.3)
 
+    # 1.1 Detect Failovers
+    failover_segments = []
+    if 'server_id' in df.columns:
+        # Detect where server_id changes from one row to the next
+        df['server_changed'] = df['server_id'] != df['server_id'].shift(1)
+        # First row shift is NaN/True, so we ignore index 0
+        failover_segments = df[df['server_changed'] & (df.index > 0)]['segment'].tolist()
+
+    for seg in failover_segments:
+        ax1.axvline(x=seg, color='red', linestyle='--', linewidth=2, label='Failover' if seg == failover_segments[0] else "")
+
     plt.title('Vazão vs Qualidade (Alinhada por Bitrate)')
     ax1.legend(loc='upper left')
     fig.tight_layout()
@@ -55,6 +66,11 @@ def generate_graphs(csv_path, output_dir):
     # 2. Buffer Level
     plt.figure(figsize=(10, 6))
     plt.plot(df['segment'], df['buffer_level_s'], label='Nível do Buffer (s)', color='green')
+    
+    # Add failover lines to buffer graph too
+    for seg in failover_segments:
+        plt.axvline(x=seg, color='red', linestyle='--', linewidth=2, label='Failover' if seg == failover_segments[0] else "")
+
     plt.axhline(y=2.0, color='r', linestyle='--', label='Limite Mínimo (1 segmento)')
     plt.xlabel('Segmento')
     plt.ylabel('Segundos')

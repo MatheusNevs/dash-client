@@ -1,18 +1,19 @@
 import time
 import sys
 import os
+import argparse
 
 # Add the current directory to sys.path to allow relative imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from network import NetworkManager
 from buffer import BufferManager
-from abr import BaselinePolicy
+from abr import BaselinePolicy, BufferBasedPolicy
 from metrics_collector import MetricsCollector
 
-def run_client(num_segments=20):
+def run_client(num_segments, policy_name):
     manifest_url = "http://137.131.178.229:8080/manifest"
-    output_csv = "../metrics/streaming_metrics.csv"
+    output_csv = f"../metrics/streaming_metrics_{policy_name}.csv"
     
     # Initialize components
     network = NetworkManager(manifest_url)
@@ -23,14 +24,20 @@ def run_client(num_segments=20):
         return
 
     buffer = BufferManager(manifest['segment_duration_s'])
-    policy = BaselinePolicy(safety_factor=0.8)
+    
+    # Policy selection logic
+    if policy_name == "buffer":
+        policy = BufferBasedPolicy()
+    else:
+        policy = BaselinePolicy(safety_factor=0.8)
+        
     metrics = MetricsCollector(os.path.join(os.path.dirname(__file__), output_csv))
     
     # State variables
-    failover_total = 0
-    last_throughput = 500.0 # Initial guess for the first segment
+    # failover_total will be managed by NetworkManager in Maria's task
+    last_throughput = 500.0 # Initial guess
     
-    print(f"Starting streaming from {network.current_server['url']}...")
+    print(f"Starting streaming with policy '{policy_name}' from {network.current_server['url']}...")
     print(f"Targeting {num_segments} segments.")
 
     for i in range(1, num_segments + 1):
@@ -64,12 +71,12 @@ def run_client(num_segments=20):
             'vazão_kbps': throughput,
             'download_time_s': download_time,
             'jitter_network_ms': jitter,
-            'jitter_ewma_ms': 0, # To be implemented in Phase 3
+            'jitter_ewma_ms': 0, 
             'buffer_level_s': buffer.get_level(),
             'buffer_can_play': buffer_can_play_before,
             'rebuffer_event': 1 if buffer_can_play_before == 0 and i > 1 else 0,
-            'stall_duration_s': 0, # Simplified for now
-            'failover_total': failover_total
+            'stall_duration_s': 0,
+            'failover_total': getattr(network, 'failover_count', 0)
         }
         metrics.log_metric(metric_data)
         
@@ -78,7 +85,9 @@ def run_client(num_segments=20):
     print(f"\nStreaming finished. Metrics saved to {output_csv}")
 
 if __name__ == "__main__":
-    segments = 20
-    if len(sys.argv) > 1:
-        segments = int(sys.argv[1])
-    run_client(segments)
+    parser = argparse.ArgumentParser(description="DASH Adaptive Streaming Client")
+    parser.add_argument("-n", "--segments", type=int, default=20, help="Number of segments to download")
+    parser.add_argument("-p", "--policy", type=str, choices=["baseline", "buffer"], default="baseline", help="ABR Policy to use")
+    
+    args = parser.parse_args()
+    run_client(args.segments, args.policy)

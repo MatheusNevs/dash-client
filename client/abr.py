@@ -28,3 +28,14 @@ class BaselinePolicy(ABRPolicy):
                 break
                 
         return selected
+
+class BufferBasedPolicy(ABRPolicy):
+    """Buffer-Based ABR policy (Policy 2). To be implemented by Bernardo."""
+    
+    def select_quality(self, throughput_kbps, buffer_level, representations):
+        # Sort representations by bitrate ascending
+        sorted_reprs = sorted(representations, key=lambda x: x['bitrate_kbps'])
+        
+        # TODO: Implement logic based on buffer_level zones
+        # Placeholder: Return lowest quality
+        return sorted_reprs[0]

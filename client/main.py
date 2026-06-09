@@ -60,7 +60,34 @@ def run_client(num_segments, policy_name):
         last_throughput = throughput
         
         # Update terminal status (one line)
-        status = f"Seg {i:03d}/{num_segments:03d} | Qualidade: {selected_repr['quality']:5} | Vazão: {throughput:7.2f} kbps | Buffer: {buffer.get_level():5.2f}s "
+        server_id = network.current_server['id']
+        # ANSI color codes: A = Green, B = Yellow, others = Default
+        if server_id == 'A':
+            server_str = f"\033[92m{server_id}\033[0m"
+        elif server_id == 'B':
+            server_str = f"\033[93m{server_id}\033[0m"
+        else:
+            server_str = server_id
+            
+        # Quality color coding
+        q = selected_repr['quality']
+        if q == '1080p': q_str = f"\033[92m{q:5}\033[0m" # Green
+        elif q == '720p': q_str = f"\033[96m{q:5}\033[0m" # Cyan
+        elif q == '480p': q_str = f"\033[93m{q:5}\033[0m" # Yellow
+        else: q_str = f"\033[91m{q:5}\033[0m" # Red
+
+        # Throughput color coding
+        if throughput >= 1100: t_str = f"\033[92m{throughput:7.2f}\033[0m" # Green
+        elif throughput >= 600: t_str = f"\033[93m{throughput:7.2f}\033[0m" # Yellow
+        else: t_str = f"\033[91m{throughput:7.2f}\033[0m" # Red
+
+        # Buffer color coding
+        b_lvl = buffer.get_level()
+        if b_lvl >= 10: b_str = f"\033[92m{b_lvl:5.2f}\033[0m" # Green
+        elif b_lvl >= 4: b_str = f"\033[93m{b_lvl:5.2f}\033[0m" # Yellow
+        else: b_str = f"\033[91m{b_lvl:5.2f}\033[0m" # Red
+
+        status = f"Seg {i:03d}/{num_segments:03d} | Servidor: {server_str} | Qualidade: {q_str} | Vazão: {t_str} kbps | Buffer: {b_str}s "
         print(f"\r{status}", end="", flush=True)
 
         metric_data = {

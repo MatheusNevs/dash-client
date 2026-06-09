@@ -20,26 +20,23 @@ class NetworkManager:
             response.raise_for_status()
             self.manifest = response.json()
             
+            # Sanitize server IDs (e.g. 'srv-B' to 'B') to match the expected CSV format
+            for server in self.manifest['servers']:
+                if server['id'].startswith('srv-'):
+                    server['id'] = server['id'].replace('srv-', '')
+
             # Sort servers by priority
             self.all_servers = sorted(self.manifest['servers'], key=lambda x: x['priority'])
             self.current_server = self.all_servers[0]
             
             return self.manifest
-        except Exception as e:
-            print(f"\n[Network] Error fetching manifest: {e}")
+        except Exception:
             return None
 
     def try_failover(self):
         """
         Attempts to switch to a fallback server.
-        TODO (Maria): 
-        1. Percorrer self.all_servers procurando o próximo servidor.
-        2. Realizar Health Check (self.check_health).
-        3. Se OK, medir latência e atualizar self.current_server.
-        4. Incrementar self.failover_count.
         """
-        print(f"\n[Network] Failover triggered! Switching from {self.current_server['id']}...")
-        
         # Increment failover counter
         self.failover_count += 1
 
@@ -52,15 +49,11 @@ class NetworkManager:
             next_index = (current_index + i) % total_servers
             candidato = self.all_servers[next_index]
             
-            print(f"    [Failover] Checking integrity of backup server ({candidato['id']})...")
-            
             # Health Check
             if self.check_health(candidato['url']):
                 self.current_server = candidato
-                print(f"    [Failover] Sucess! Route redirected to server {candidato['id']}.")
                 return True
                 
-        print("    [Critical Error] No backup server is responding to the network!")
         return False
 
     def download_segment(self, quality_path):
@@ -71,12 +64,23 @@ class NetworkManager:
         if not self.current_server:
             return None, 0, 0, 0
 
+        # Verifica se estamos em um servidor de fallback e se o principal (A) voltou
+        if self.current_server != self.all_servers[0]:
+            try:
+                # Usa um timeout muito baixo (0.5s) para não travar o vídeo se ainda estiver offline
+                response = self.session.get(f"{self.all_servers[0]['url']}/health", timeout=0.5)
+                if response.status_code == 200:
+                    self.current_server = self.all_servers[0]
+                    self.failover_count += 1
+            except:
+                pass # Continua no fallback se o principal ainda estiver fora
+
         url = f"{self.current_server['url']}{quality_path}"
         
         try:
             start_time = time.perf_counter()
-            # Timeout can be reduced to detect failure faster
-            response = self.session.get(url, timeout=5) 
+            # Timeout reduzido para 1s para detectar falhas mais rápido (Failover ágil)
+            response = self.session.get(url, timeout=1) 
             end_time = time.perf_counter()
             
             response.raise_for_status()
@@ -86,9 +90,7 @@ class NetworkManager:
             throughput_kbps = (len(content) * 8) / (1000 * download_time) if download_time > 0 else 0
             
             return content, download_time, throughput_kbps, 0
-        except Exception as e:
-            print(f"\n[Network] Download failed: {e}")
-            
+        except Exception:
             if self.try_failover():
                 # Try to download again, using new server available
                 return self.download_segment(quality_path)
@@ -97,17 +99,8 @@ class NetworkManager:
     def check_health(self, server_url):
         """Checks if a server is healthy via GET /health."""
         try:
-            start_time = time.perf_counter()
             response = self.session.get(f"{server_url}/health", timeout=2)
-            end_time = time.perf_counter()
-            
             if response.status_code == 200:
-                latency_ms = (end_time - start_time) * 1000
-                
-                # Alert in case route is low or has noise (latency > 500 ms)
-                if latency_ms > 500:
-                    print(f"    [Attention] Healthy server, but latency is high: {latency_ms:.2f} ms")
-                    
                 return True
             return False
         except:

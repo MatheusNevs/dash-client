@@ -45,7 +45,7 @@ def run_client(num_segments, policy_name):
     manifest = network.fetch_manifest()
     
     if not manifest:
-        print("Failed to fetch manifest. Exiting.")
+        print(f"[{policy_name}] Failed to fetch manifest.")
         return
 
     buffer = BufferManager(manifest['segment_duration_s'])
@@ -76,7 +76,6 @@ def run_client(num_segments, policy_name):
         future = executor.submit(network.download_segment, selected_repr['url_path'])
         
         # 3. Update terminal EVERY 0.1s while waiting for download
-        # Track stall duration if buffer hits zero
         while not future.done():
             level = buffer.get_level()
             if level <= 0 and stall_start is None:

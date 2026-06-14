@@ -12,6 +12,7 @@ class NetworkManager:
         self.current_server = None
         self.manifest = None
         self.failover_count = 0
+        self.last_download_time = None
 
     def fetch_manifest(self):
         """Downloads and parses the manifest JSON."""
@@ -87,9 +88,15 @@ class NetworkManager:
             content = response.content
             download_time = end_time - start_time
             
+            # Cálculo de Jitter (ms): Variação absoluta entre tempos de download consecutivos
+            jitter_ms = 0
+            if self.last_download_time is not None:
+                jitter_ms = abs(download_time - self.last_download_time) * 1000
+            self.last_download_time = download_time
+
             throughput_kbps = (len(content) * 8) / (1000 * download_time) if download_time > 0 else 0
             
-            return content, download_time, throughput_kbps, 0
+            return content, download_time, throughput_kbps, jitter_ms
         except Exception:
             if self.try_failover():
                 # Try to download again, using new server available

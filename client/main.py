@@ -57,6 +57,8 @@ def run_client(num_segments, policy_name):
         
     metrics = MetricsCollector(os.path.join(os.path.dirname(__file__), output_csv))
     last_throughput = 500.0 
+    jitter_ewma = 0.0
+    alpha = 0.125 # Standard TCP-like EWMA alpha
     
     print(f"Starting streaming with policy '{policy_name}' from {network.current_server['url']}...")
     print(f"Targeting {num_segments} segments.")
@@ -70,16 +72,26 @@ def run_client(num_segments, policy_name):
         selected_repr = policy.select_quality(last_throughput, current_buffer, manifest['representations'])
         
         # 2. Start download in background
+        stall_start = None
         future = executor.submit(network.download_segment, selected_repr['url_path'])
         
         # 3. Update terminal EVERY 0.1s while waiting for download
+        # Track stall duration if buffer hits zero
         while not future.done():
-            print_status(i, num_segments, network.current_server['id'], selected_repr['quality'], last_throughput, buffer.get_level())
+            level = buffer.get_level()
+            if level <= 0 and stall_start is None:
+                stall_start = time.perf_counter()
+            
+            print_status(i, num_segments, network.current_server['id'], selected_repr['quality'], last_throughput, level)
             time.sleep(0.1)
 
         # 4. Download finished, get results
         content, download_time, throughput, jitter = future.result()
         
+        stall_duration = 0
+        if stall_start is not None:
+            stall_duration = time.perf_counter() - stall_start
+
         if content is None:
             print(f"\n[{i:02d}] Failed to download segment. Skipping.")
             continue
@@ -88,6 +100,12 @@ def run_client(num_segments, policy_name):
         buffer_can_play_before = 1 if buffer.can_play() else 0
         buffer.add_segment()
         last_throughput = throughput
+        
+        # Update Jitter EWMA
+        if i == 1:
+            jitter_ewma = jitter
+        else:
+            jitter_ewma = (1 - alpha) * jitter_ewma + alpha * jitter
         
         # Final print for this segment with the updated buffer/throughput
         print_status(i, num_segments, network.current_server['id'], selected_repr['quality'], throughput, buffer.get_level())
@@ -101,11 +119,11 @@ def run_client(num_segments, policy_name):
             'vazão_kbps': throughput,
             'download_time_s': download_time,
             'jitter_network_ms': jitter,
-            'jitter_ewma_ms': 0, 
+            'jitter_ewma_ms': jitter_ewma, 
             'buffer_level_s': buffer.get_level(),
             'buffer_can_play': buffer_can_play_before,
-            'rebuffer_event': 1 if buffer_can_play_before == 0 and i > 1 else 0,
-            'stall_duration_s': 0,
+            'rebuffer_event': 1 if stall_duration > 0 else 0,
+            'stall_duration_s': stall_duration,
             'failover_total': getattr(network, 'failover_count', 0)
         }
         metrics.log_metric(metric_data)

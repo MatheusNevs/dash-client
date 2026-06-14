@@ -8,7 +8,8 @@ Coloque este arquivo na mesma pasta que abr.py (dentro de client/).
 import sys
 import os
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Adiciona o diretório 'client' (um nível acima de 'tests') ao sys.path
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../client'))
 from abr import BaselinePolicy, BufferBasedPolicy
 
 # ─────────────────────────── Dados de teste ─────────────────────────────────

@@ -135,7 +135,27 @@ def run_client(num_segments, policy_name):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DASH Adaptive Streaming Client")
     parser.add_argument("-n", "--segments", type=int, default=20, help="Number of segments to download")
-    parser.add_argument("-p", "--policy", type=str, choices=["baseline", "buffer"], default="baseline", help="ABR Policy to use")
+    parser.add_argument("-p", "--policy", type=str, choices=["baseline", "buffer", "all"], default="baseline", help="ABR Policy to use")
+    parser.add_argument("-g", "--generate", action="store_true", help="Automatically generate graphs after finishing")
     
     args = parser.parse_args()
-    run_client(args.segments, args.policy)
+    
+    if args.policy == "all":
+        policies = ["baseline", "buffer"]
+        print(f"Executing batch run for all policies: {policies}")
+        for p in policies:
+            print(f"\n" + "="*50)
+            print(f"RUNNING POLICY: {p}")
+            print("="*50)
+            run_client(args.segments, p)
+    else:
+        run_client(args.segments, args.policy)
+
+    if args.generate:
+        print("\nGenerating comparison graphs...")
+        try:
+            import subprocess
+            graph_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../graphs/generate_graphs.py")
+            subprocess.run(["python3", graph_script])
+        except Exception as e:
+            print(f"Could not auto-generate graphs: {e}")

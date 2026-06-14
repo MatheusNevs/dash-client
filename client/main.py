@@ -2,6 +2,7 @@ import time
 import sys
 import os
 import argparse
+import concurrent.futures
 
 # Add the current directory to sys.path to allow relative imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -11,11 +12,35 @@ from buffer import BufferManager
 from abr import BaselinePolicy, BufferBasedPolicy
 from metrics_collector import MetricsCollector
 
+def print_status(i, num_segments, server_id, quality, throughput, buffer_level):
+    """Helper to format and print the dynamic status line."""
+    if server_id == 'A':
+        server_str = f"\033[92m{server_id}\033[0m"
+    elif server_id == 'B':
+        server_str = f"\033[93m{server_id}\033[0m"
+    else:
+        server_str = server_id
+        
+    if quality == '1080p': q_str = f"\033[92m{quality:5}\033[0m"
+    elif quality == '720p': q_str = f"\033[96m{quality:5}\033[0m"
+    elif quality == '480p': q_str = f"\033[93m{quality:5}\033[0m"
+    else: q_str = f"\033[91m{quality:5}\033[0m"
+
+    if throughput >= 1100: t_str = f"\033[92m{throughput:7.2f}\033[0m"
+    elif throughput >= 600: t_str = f"\033[93m{throughput:7.2f}\033[0m"
+    else: t_str = f"\033[91m{throughput:7.2f}\033[0m"
+
+    if buffer_level >= 10: b_str = f"\033[92m{buffer_level:5.2f}\033[0m"
+    elif buffer_level >= 4: b_str = f"\033[93m{buffer_level:5.2f}\033[0m"
+    else: b_str = f"\033[91m{buffer_level:5.2f}\033[0m"
+
+    status = f"Seg {i:03d}/{num_segments:03d} | Servidor: {server_str} | Qualidade: {q_str} | Vazão: {t_str} kbps | Buffer: {b_str}s "
+    print(f"\r{status}", end="", flush=True)
+
 def run_client(num_segments, policy_name):
     manifest_url = "http://137.131.178.229:8080/manifest"
     output_csv = f"../metrics/streaming_metrics_{policy_name}.csv"
     
-    # Initialize components
     network = NetworkManager(manifest_url)
     manifest = network.fetch_manifest()
     
@@ -25,71 +50,49 @@ def run_client(num_segments, policy_name):
 
     buffer = BufferManager(manifest['segment_duration_s'])
     
-    # Policy selection logic
     if policy_name == "buffer":
         policy = BufferBasedPolicy()
     else:
         policy = BaselinePolicy(safety_factor=0.8)
         
     metrics = MetricsCollector(os.path.join(os.path.dirname(__file__), output_csv))
-    
-    # State variables
-    # failover_total will be managed by NetworkManager in Maria's task
-    last_throughput = 500.0 # Initial guess
+    last_throughput = 500.0 
     
     print(f"Starting streaming with policy '{policy_name}' from {network.current_server['url']}...")
     print(f"Targeting {num_segments} segments.")
 
+    # Use a thread pool to download asynchronously so we can update the UI
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
     for i in range(1, num_segments + 1):
-        # 1. Decide quality
+        # 1. Decide quality based on current state
         current_buffer = buffer.get_level()
         selected_repr = policy.select_quality(last_throughput, current_buffer, manifest['representations'])
         
-        # 2. Download segment
-        content, download_time, throughput, jitter = network.download_segment(selected_repr['url_path'])
+        # 2. Start download in background
+        future = executor.submit(network.download_segment, selected_repr['url_path'])
+        
+        # 3. Update terminal EVERY 0.1s while waiting for download
+        while not future.done():
+            print_status(i, num_segments, network.current_server['id'], selected_repr['quality'], last_throughput, buffer.get_level())
+            time.sleep(0.1)
+
+        # 4. Download finished, get results
+        content, download_time, throughput, jitter = future.result()
         
         if content is None:
             print(f"\n[{i:02d}] Failed to download segment. Skipping.")
             continue
             
-        # 3. Update buffer
+        # 5. Update buffer with new segment
         buffer_can_play_before = 1 if buffer.can_play() else 0
         buffer.add_segment()
-        
-        # 4. Handle metrics
         last_throughput = throughput
         
-        # Update terminal status (one line)
-        server_id = network.current_server['id']
-        # ANSI color codes: A = Green, B = Yellow, others = Default
-        if server_id == 'A':
-            server_str = f"\033[92m{server_id}\033[0m"
-        elif server_id == 'B':
-            server_str = f"\033[93m{server_id}\033[0m"
-        else:
-            server_str = server_id
-            
-        # Quality color coding
-        q = selected_repr['quality']
-        if q == '1080p': q_str = f"\033[92m{q:5}\033[0m" # Green
-        elif q == '720p': q_str = f"\033[96m{q:5}\033[0m" # Cyan
-        elif q == '480p': q_str = f"\033[93m{q:5}\033[0m" # Yellow
-        else: q_str = f"\033[91m{q:5}\033[0m" # Red
+        # Final print for this segment with the updated buffer/throughput
+        print_status(i, num_segments, network.current_server['id'], selected_repr['quality'], throughput, buffer.get_level())
 
-        # Throughput color coding
-        if throughput >= 1100: t_str = f"\033[92m{throughput:7.2f}\033[0m" # Green
-        elif throughput >= 600: t_str = f"\033[93m{throughput:7.2f}\033[0m" # Yellow
-        else: t_str = f"\033[91m{throughput:7.2f}\033[0m" # Red
-
-        # Buffer color coding
-        b_lvl = buffer.get_level()
-        if b_lvl >= 10: b_str = f"\033[92m{b_lvl:5.2f}\033[0m" # Green
-        elif b_lvl >= 4: b_str = f"\033[93m{b_lvl:5.2f}\033[0m" # Yellow
-        else: b_str = f"\033[91m{b_lvl:5.2f}\033[0m" # Red
-
-        status = f"Seg {i:03d}/{num_segments:03d} | Servidor: {server_str} | Qualidade: {q_str} | Vazão: {t_str} kbps | Buffer: {b_str}s "
-        print(f"\r{status}", end="", flush=True)
-
+        # 6. Handle metrics
         metric_data = {
             'segment': i,
             'server_id': network.current_server['id'],
@@ -106,9 +109,9 @@ def run_client(num_segments, policy_name):
             'failover_total': getattr(network, 'failover_count', 0)
         }
         metrics.log_metric(metric_data)
-        
-        time.sleep(0.1)
 
+    executor.shutdown()
+    buffer.stop()
     print(f"\nStreaming finished. Metrics saved to {output_csv}")
 
 if __name__ == "__main__":

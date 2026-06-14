@@ -4,19 +4,48 @@ import os
 import sys
 
 def generate_individual_graphs(csv_path, output_base_dir, policy_name):
-    """Gera gráficos individuais básicos para uma política."""
+    """Gera gráficos individuais detalhados para uma política, incluindo marcas de Failover."""
     if not os.path.exists(csv_path): return
     df = pd.read_csv(csv_path)
     policy_dir = os.path.join(output_base_dir, 'individual', policy_name)
     os.makedirs(policy_dir, exist_ok=True)
 
+    # Identificar segmentos de Failover (mudança de server_id)
+    failover_segments = []
+    if 'server_id' in df.columns:
+        df['server_changed'] = df['server_id'] != df['server_id'].shift(1)
+        failover_segments = df[df['server_changed'] & (df.index > 0)]['segment'].tolist()
+
+    # --- 1. Vazão vs Bitrate (com marcas de Failover) ---
     fig, ax1 = plt.subplots(figsize=(10, 6))
     ax1.plot(df['segment'], df['vazão_kbps'], label='Vazão (kbps)', color='tab:blue', alpha=0.3)
     ax1.step(df['segment'], df['bitrate_kbps'], label='Bitrate (kbps)', color='tab:red', where='post', linewidth=2)
+    
+    for seg in failover_segments:
+        ax1.axvline(x=seg, color='red', linestyle='--', linewidth=1.5, label='Failover' if seg == failover_segments[0] else "")
+    
+    ax1.set_xlabel('Segmento')
     ax1.set_ylabel('kbps')
     ax1.legend(loc='upper left')
-    plt.title(f'Performance Individual: {policy_name.upper()}')
+    ax1.grid(True, alpha=0.2)
+    plt.title(f'Performance Individual: {policy_name.upper()} (com Failover)')
     plt.savefig(os.path.join(policy_dir, 'vazao_vs_bitrate.png'))
+    plt.close()
+
+    # --- 2. Nível de Buffer Individual (com marcas de Failover) ---
+    plt.figure(figsize=(10, 6))
+    plt.plot(df['segment'], df['buffer_level_s'], label='Buffer (s)', color='green', linewidth=2)
+    
+    for seg in failover_segments:
+        plt.axvline(x=seg, color='red', linestyle='--', linewidth=1.5)
+    
+    plt.axhline(y=5.0, color='orange', linestyle=':', label='Zona de Pânico')
+    plt.xlabel('Segmento')
+    plt.ylabel('Segundos')
+    plt.title(f'Nível do Buffer: {policy_name.upper()}')
+    plt.legend()
+    plt.grid(True, alpha=0.2)
+    plt.savefig(os.path.join(policy_dir, 'nivel_buffer.png'))
     plt.close()
 
 def generate_iqs_comparison(df_base, df_buff, output_dir):
@@ -24,20 +53,19 @@ def generate_iqs_comparison(df_base, df_buff, output_dir):
     max_bitrate = max(df_base['bitrate_kbps'].max(), df_buff['bitrate_kbps'].max())
     SATURATION_LIMIT = 20.0 # Segundos
     
-    # Cálculo com saturação: o buffer acima de 20s não gera pontos extras de "inteligência"
     df_base['iqs'] = df_base['buffer_level_s'].clip(upper=SATURATION_LIMIT) * (df_base['bitrate_kbps'] / max_bitrate)
     df_buff['iqs'] = df_buff['buffer_level_s'].clip(upper=SATURATION_LIMIT) * (df_buff['bitrate_kbps'] / max_bitrate)
     
     plt.figure(figsize=(12, 6))
-    plt.fill_between(df_base['segment'], df_base['iqs'], color='orange', alpha=0.3, label='Baseline (Eficiência)')
-    plt.plot(df_base['segment'], df_base['iqs'], color='orange', linestyle='--', alpha=0.6)
+    plt.fill_between(df_base['segment'], df_base['iqs'], color='orange', alpha=0.2, label='Baseline (Eficiência)')
+    plt.plot(df_base['segment'], df_base['iqs'], color='orange', linestyle='--', alpha=0.5)
     
-    plt.fill_between(df_buff['segment'], df_buff['iqs'], color='green', alpha=0.4, label='Política 2 (Eficiência)')
+    plt.fill_between(df_buff['segment'], df_buff['iqs'], color='green', alpha=0.3, label='Política 2 (Eficiência)')
     plt.plot(df_buff['segment'], df_buff['iqs'], color='green', linewidth=2)
     
     plt.xlabel('Segmento')
     plt.ylabel('Índice IQS (Buffer Saturado em 20s)')
-    plt.title('Índice de Qualidade Segura (IQS): Eficiência Real com Teto de Segurança')
+    plt.title('Comparativo de Eficiência: IQS (Safe Quality Index)')
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.savefig(os.path.join(output_dir, 'comparativo_eficiencia_iqs.png'))
@@ -45,25 +73,20 @@ def generate_iqs_comparison(df_base, df_buff, output_dir):
 
 def generate_cumulative_bitrate_comparison(df_base, df_buff, output_dir):
     """Gera gráfico de Bitrate Acumulado (Zera se can_play == 0)."""
-    
     def get_cumulative(df):
-        cum_sum = 0
-        result = []
+        cum_sum, result = 0, []
         for _, row in df.iterrows():
-            if row['buffer_can_play'] == 1:
-                cum_sum += row['bitrate_kbps']
-            else:
-                cum_sum = 0 # Stall detectado: reseta o progresso de "qualidade entregue"
+            if row['buffer_can_play'] == 1: cum_sum += row['bitrate_kbps']
+            else: cum_sum = 0
             result.append(cum_sum)
         return result
 
     plt.figure(figsize=(12, 6))
     plt.plot(df_base['segment'], get_cumulative(df_base), label='Baseline (Acumulado)', color='orange', linestyle='--')
     plt.plot(df_buff['segment'], get_cumulative(df_buff), label='Política 2 (Acumulado)', color='green', linewidth=2)
-    
     plt.xlabel('Segmento')
     plt.ylabel('Bitrate Total Acumulado (kbps)')
-    plt.title('Continuidade de Qualidade: Bitrate Acumulado (Reseta em caso de Stall)')
+    plt.title('Continuidade de Qualidade: Bitrate Acumulado')
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.savefig(os.path.join(output_dir, 'comparativo_bitrate_acumulado.png'))
@@ -85,17 +108,13 @@ def generate_correlation_grid(df_base, df_buff, output_dir):
     plt.close()
 
 def generate_comparison_graphs(csv_baseline, csv_buffer, output_base_dir):
-    if not os.path.exists(csv_baseline) or not os.path.exists(csv_buffer):
-        return
-    df_base = pd.read_csv(csv_baseline)
-    df_buff = pd.read_csv(csv_buffer)
+    if not os.path.exists(csv_baseline) or not os.path.exists(csv_buffer): return
+    df_base, df_buff = pd.read_csv(csv_baseline), pd.read_csv(csv_buffer)
     comp_dir = os.path.join(output_base_dir, 'comparison')
     os.makedirs(comp_dir, exist_ok=True)
-
     generate_correlation_grid(df_base, df_buff, comp_dir)
     generate_iqs_comparison(df_base, df_buff, comp_dir)
     generate_cumulative_bitrate_comparison(df_base, df_buff, comp_dir)
-    print(f"Gráficos comparativos (IQS Saturado e Acumulado) gerados em: {comp_dir}")
 
 if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))

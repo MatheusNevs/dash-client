@@ -16,20 +16,34 @@ def generate_individual_graphs(csv_path, output_base_dir, policy_name):
         df['server_changed'] = df['server_id'] != df['server_id'].shift(1)
         failover_segments = df[df['server_changed'] & (df.index > 0)]['segment'].tolist()
 
-    # --- 1. Vazão vs Bitrate (com marcas de Failover) ---
-    fig, ax1 = plt.subplots(figsize=(10, 6))
-    ax1.plot(df['segment'], df['vazão_kbps'], label='Vazão (kbps)', color='tab:blue', alpha=0.3)
-    ax1.step(df['segment'], df['bitrate_kbps'], label='Bitrate (kbps)', color='tab:red', where='post', linewidth=2)
+    # --- 1. Vazão vs Qualidade (com dois eixos e marcas de Failover) ---
+    fig, ax1 = plt.subplots(figsize=(12, 7))
+    manifest_qualities = {200: '240p', 400: '360p', 700: '480p', 1500: '720p', 3000: '1080p'}
+    bitrate_thresholds = sorted(manifest_qualities.keys())
+    quality_labels = [manifest_qualities[b] for b in bitrate_thresholds]
+
+    ax1.plot(df['segment'], df['vazão_kbps'], label='Vazão Medida (kbps)', color='tab:blue', marker='o', linestyle='--', alpha=0.4)
+    ax1.step(df['segment'], df['bitrate_kbps'], label='Bitrate Selecionado (kbps)', color='tab:red', where='post', linewidth=3)
     
     for seg in failover_segments:
-        ax1.axvline(x=seg, color='red', linestyle='--', linewidth=1.5, label='Failover' if seg == failover_segments[0] else "")
+        ax1.axvline(x=seg, color='red', linestyle='--', linewidth=2, label='Failover' if seg == failover_segments[0] else "")
     
     ax1.set_xlabel('Segmento')
-    ax1.set_ylabel('kbps')
+    ax1.set_ylabel('Vazão / Bitrate (kbps)')
+    ax1.grid(True, which='both', linestyle='--', alpha=0.5)
+
+    # Segundo eixo Y para as resoluções
+    ax2 = ax1.twinx()
+    ax2.set_ylim(ax1.get_ylim())
+    ax2.set_yticks(bitrate_thresholds)
+    ax2.set_yticklabels(quality_labels)
+    ax2.set_ylabel('Qualidade (Resolução)')
+    ax2.tick_params(axis='y', labelcolor='tab:red')
+
+    plt.title(f'Vazão vs Qualidade: {policy_name.upper()} (com Failover)')
     ax1.legend(loc='upper left')
-    ax1.grid(True, alpha=0.2)
-    plt.title(f'Performance Individual: {policy_name.upper()} (com Failover)')
-    plt.savefig(os.path.join(policy_dir, 'vazao_vs_bitrate.png'))
+    fig.tight_layout()
+    plt.savefig(os.path.join(policy_dir, 'vazao_vs_qualidade.png'))
     plt.close()
 
     # --- 2. Nível de Buffer Individual (com marcas de Failover) ---

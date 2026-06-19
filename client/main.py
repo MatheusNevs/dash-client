@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from network import NetworkManager
 from buffer import BufferManager
-from abr import BaselinePolicy, BufferBasedPolicy
+from abr import BaselinePolicy, BufferBasedPolicy, HeuristicPolicy
 from metrics_collector import MetricsCollector
 
 def print_status(i, num_segments, server_id, quality, throughput, buffer_level):
@@ -52,6 +52,8 @@ def run_client(num_segments, policy_name):
     
     if policy_name == "buffer":
         policy = BufferBasedPolicy()
+    elif policy_name == "heuristic":
+        policy = HeuristicPolicy()
     else:
         policy = BaselinePolicy(safety_factor=0.8)
         
@@ -69,7 +71,7 @@ def run_client(num_segments, policy_name):
     for i in range(1, num_segments + 1):
         # 1. Decide quality based on current state
         current_buffer = buffer.get_level()
-        selected_repr = policy.select_quality(last_throughput, current_buffer, manifest['representations'])
+        selected_repr = policy.select_quality(last_throughput, current_buffer, manifest['representations'], jitter_ewma=jitter_ewma)
         
         # 2. Start download in background
         stall_start = None
@@ -134,13 +136,13 @@ def run_client(num_segments, policy_name):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DASH Adaptive Streaming Client")
     parser.add_argument("-n", "--segments", type=int, default=20, help="Number of segments to download")
-    parser.add_argument("-p", "--policy", type=str, choices=["baseline", "buffer", "all"], default="baseline", help="ABR Policy to use")
+    parser.add_argument("-p", "--policy", type=str, choices=["baseline", "buffer", "heuristic", "all"], default="baseline", help="ABR Policy to use")
     parser.add_argument("-g", "--generate", action="store_true", help="Automatically generate graphs after finishing")
     
     args = parser.parse_args()
     
     if args.policy == "all":
-        policies = ["baseline", "buffer"]
+        policies = ["baseline", "buffer", "heuristic"]
         print(f"Executing batch run for all policies: {policies}")
         for p in policies:
             print(f"\n" + "="*50)

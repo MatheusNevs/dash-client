@@ -1,6 +1,6 @@
 class ABRPolicy:
     """Base class for ABR policies."""
-    def select_quality(self, throughput_kbps, buffer_level, representations):
+    def select_quality(self, throughput_kbps, buffer_level, representations, **kwargs):
         raise NotImplementedError
 
 
@@ -10,7 +10,7 @@ class BaselinePolicy(ABRPolicy):
     def __init__(self, safety_factor=0.8):
         self.safety_factor = safety_factor
 
-    def select_quality(self, throughput_kbps, buffer_level, representations):
+    def select_quality(self, throughput_kbps, buffer_level, representations, **kwargs):
         """
         Selects the highest quality with bitrate < throughput * safety_factor.
         'representations' is a list of dicts with 'quality' and 'bitrate_kbps'.
@@ -86,7 +86,7 @@ class BufferBasedPolicy(ABRPolicy):
 
     # ─────────────────────────── decisão principal ──────────────────────────
 
-    def select_quality(self, throughput_kbps, buffer_level, representations):
+    def select_quality(self, throughput_kbps, buffer_level, representations, **kwargs):
         """
         Seleciona a qualidade com base no nível de buffer com histerese.
 
@@ -129,3 +129,26 @@ class BufferBasedPolicy(ABRPolicy):
             # caso contrário: mantém qualidade atual — a histerese está segurando
 
         return sorted_reprs[self.current_index]
+
+
+class HeuristicPolicy(ABRPolicy):
+    """
+    Heuristic/Statistical ABR policy (Policy 3).
+    A ser implementada na Fase 3.
+    """
+    def __init__(self):
+        self.current_index = 0
+
+    def select_quality(self, throughput_kbps, buffer_level, representations, **kwargs):
+        """
+        Seleciona a qualidade com base em heurísticas e estatísticas.
+        Sugestão: utilizar 'jitter_ewma' passado no **kwargs para penalizar estimativas instáveis.
+        """
+        # TODO: Implementar a lógica heurística (EWMA + Jitter, por exemplo).
+        # Extraindo o jitter (enviado pelo main.py):
+        # jitter = kwargs.get('jitter_ewma', 0.0)
+        
+        sorted_reprs = sorted(representations, key=lambda x: x['bitrate_kbps'])
+        
+        # Implementação "stub" (temporária) para não quebrar a execução
+        return sorted_reprs[0]

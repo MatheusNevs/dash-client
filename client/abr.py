@@ -7,7 +7,7 @@ class ABRPolicy:
 class BaselinePolicy(ABRPolicy):
     """Rate-Based ABR policy (Policy 1)."""
 
-    def __init__(self, safety_factor=0.8):
+    def __init__(self, safety_factor=0.92):
         self.safety_factor = safety_factor
 
     def select_quality(self, throughput_kbps, buffer_level, representations, **kwargs):

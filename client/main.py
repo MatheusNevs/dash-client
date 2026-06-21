@@ -55,7 +55,7 @@ def run_client(num_segments, policy_name):
     elif policy_name == "heuristic":
         policy = HeuristicPolicy()
     else:
-        policy = BaselinePolicy(safety_factor=0.8)
+        policy = BaselinePolicy(safety_factor=0.92)
         
     metrics = MetricsCollector(os.path.join(os.path.dirname(__file__), output_csv))
     last_throughput = 500.0 

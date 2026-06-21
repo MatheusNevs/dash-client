@@ -18,7 +18,7 @@ def generate_individual_graphs(csv_path, output_base_dir, policy_name):
 
     # --- 1. Vazão vs Qualidade (com dois eixos e marcas de Failover) ---
     fig, ax1 = plt.subplots(figsize=(12, 7))
-    manifest_qualities = {200: '240p', 400: '360p', 700: '480p', 1500: '720p', 3000: '1080p'}
+    manifest_qualities = {200: '240p', 400: '360p', 600: '480p', 900: '720p', 1200: '1080p'}
     bitrate_thresholds = sorted(manifest_qualities.keys())
     quality_labels = [manifest_qualities[b] for b in bitrate_thresholds]
 

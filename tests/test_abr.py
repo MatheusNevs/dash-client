@@ -12,7 +12,7 @@ import sys
 import os
 import unittest
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../client'))
 from abr import BaselinePolicy, BufferBasedPolicy, HeuristicPolicy
 
 
@@ -20,20 +20,20 @@ from abr import BaselinePolicy, BufferBasedPolicy, HeuristicPolicy
 REPRESENTATIONS = [
     {"quality": "240p",  "bitrate_kbps": 200,  "url_path": "/240p/seg.mp4"},
     {"quality": "360p",  "bitrate_kbps": 400,  "url_path": "/360p/seg.mp4"},
-    {"quality": "480p",  "bitrate_kbps": 700,  "url_path": "/480p/seg.mp4"},
-    {"quality": "720p",  "bitrate_kbps": 1500, "url_path": "/720p/seg.mp4"},
-    {"quality": "1080p", "bitrate_kbps": 3000, "url_path": "/1080p/seg.mp4"},
+    {"quality": "480p",  "bitrate_kbps": 600,  "url_path": "/480p/seg.mp4"},
+    {"quality": "720p",  "bitrate_kbps": 900, "url_path": "/720p/seg.mp4"},
+    {"quality": "1080p", "bitrate_kbps": 1200, "url_path": "/1080p/seg.mp4"},
 ]
 
 
 class TestBaselinePolicy(unittest.TestCase):
     def setUp(self):
-        self.p = BaselinePolicy(safety_factor=0.8)
+        self.p = BaselinePolicy(safety_factor=0.92)
 
     def test_selects_best_fitting_quality(self):
-        # 1000 kbps * 0.8 = 800 → cabe 480p (700), não 720p (1500)
+        # 1000 kbps * 0.92 = 920 → cabe 720p (900), não 1080p (1200)
         rep = self.p.select_quality(1000, 10, REPRESENTATIONS)
-        self.assertEqual(rep["quality"], "480p")
+        self.assertEqual(rep["quality"], "720p")
 
     def test_falls_back_to_minimum_when_low_bandwidth(self):
         rep = self.p.select_quality(100, 10, REPRESENTATIONS)
@@ -44,8 +44,8 @@ class TestBaselinePolicy(unittest.TestCase):
         self.assertEqual(rep["quality"], "1080p")
 
     def test_safety_factor_applied(self):
-        # 3100 * 0.8 = 2480 → cabe 720p (1500), não 1080p (3000)
-        rep = self.p.select_quality(3100, 10, REPRESENTATIONS)
+        # 1300 * 0.92 = 1196 → cabe 720p (900), não 1080p (1200)
+        rep = self.p.select_quality(1300, 10, REPRESENTATIONS)
         self.assertEqual(rep["quality"], "720p")
 
 
@@ -86,13 +86,13 @@ class TestBufferBasedPolicy(unittest.TestCase):
 
 class TestHeuristicPolicy(unittest.TestCase):
     def setUp(self):
-        self.p = HeuristicPolicy(alpha=0.3, beta=0.3, gamma=1.5, safety_factor=0.85)
+        self.p = HeuristicPolicy(alpha=0.3, beta=0.3, gamma=1.5, safety_factor=0.92)
 
     def test_initial_segment_conservative_fallback(self):
         # Sem histórico → fallback ultra-conservador (safety * 0.7)
         rep = self.p.select_quality(1000, 10, REPRESENTATIONS)
-        # 1000 * 0.85 * 0.7 = 595 → cabe 480p (700)? Não: 595 < 700 → 360p
-        self.assertEqual(rep["quality"], "360p")
+        # 1000 * 0.92 * 0.7 = 644 → cabe 480p (600)? Sim: 644 < 900 → 480p
+        self.assertEqual(rep["quality"], "480p")
 
     def test_ewma_updates_on_network_sample(self):
         self.p.update_network_sample(2000, 0.5)
@@ -109,7 +109,7 @@ class TestHeuristicPolicy(unittest.TestCase):
         rep_high_jitter = self.p.select_quality(3000, 10, REPRESENTATIONS)
 
         # Cria política sem jitter para comparação
-        p_clean = HeuristicPolicy(alpha=0.3, beta=0.3, gamma=1.5, safety_factor=0.85)
+        p_clean = HeuristicPolicy(alpha=0.3, beta=0.3, gamma=1.5, safety_factor=0.92)
         p_clean.update_network_sample(3000, 0.5)
         p_clean.update_network_sample(3000, 0.5)
         p_clean.update_network_sample(3000, 0.5)
@@ -126,7 +126,7 @@ class TestHeuristicPolicy(unittest.TestCase):
         for _ in range(5):
             self.p.update_network_sample(3000, 1.0)  # delay constante → jitter=0
         rep = self.p.select_quality(3000, 10, REPRESENTATIONS)
-        self.assertGreaterEqual(rep["bitrate_kbps"], 700)   # pelo menos 480p
+        self.assertGreaterEqual(rep["bitrate_kbps"], 600)   # pelo menos 480p
 
     def test_ewma_jitter_ms_property(self):
         self.p.update_network_sample(1000, 1.0)

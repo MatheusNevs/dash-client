@@ -141,7 +141,7 @@ class HeuristicPolicy(ABRPolicy):
         alpha: float = 0.3,
         beta: float  = 0.3,
         gamma: float = 1.5,
-        safety_factor: float = 0.85,
+        safety_factor: float = 0.92,
     ) -> None:
         self.alpha = alpha
         self.beta  = beta
@@ -185,3 +185,12 @@ class HeuristicPolicy(ABRPolicy):
             else:
                 break
         return selected
+
+    @property
+    def ewma_throughput(self) -> float:
+        return self._ewma_throughput if self._ewma_throughput is not None else 0.0
+
+    @property
+    def ewma_jitter_ms(self) -> float:
+        """Jitter EWMA em milissegundos (para o CSV)."""
+        return self._ewma_jitter * 1000.0

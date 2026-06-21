@@ -3,14 +3,22 @@
 Este repositório contém a implementação de um cliente de streaming de vídeo adaptativo (Adaptive Bitrate - ABR) em Python, desenvolvido para a disciplina de Teleinformática e Redes 2 (UnB).
 
 ## 🚀 Visão Geral
-O sistema simula o comportamento de um player de vídeo moderno (estilo DASH/HLS). O cliente baixa segmentos de vídeo via HTTP, mede o desempenho da rede em tempo real e decide a qualidade do próximo segmento para evitar travamentos (rebuffering) e maximizar a experiência do usuário.
+O sistema simula o comportamento de um player de vídeo moderno (estilo DASH/HLS). O cliente baixa segmentos de vídeo via HTTP, mede o desempenho da rede em tempo real e decide a qualidade do próximo segmento para garantir a continuidade da reprodução e maximizar a qualidade da imagem.
+
+## ✨ Novidades da Fase 2
+- **Política Buffer-Based (BBA):** Algoritmo inteligente com lógica de Histerese para evitar oscilações desnecessárias de qualidade.
+- **Failover Automático:** Detecção de falha no servidor principal com migração transparente para servidores de backup e auto-recovery.
+- **Métricas Avançadas:** Monitoramento de Jitter (EWMA), Duração de Stall (rebuffering real) e Índice de Qualidade Segura (IQS).
+- **Análise Comparativa:** Geração automática de gráficos comparando o desempenho das diferentes políticas.
 
 ## 📁 Estrutura do Código (`client/`)
-- **`main.py`**: Orquestrador principal. Gerencia o loop de download e a integração dos componentes.
-- **`network.py`**: Camada de rede. Responsável por requisições HTTP, medição de vazão (kbps) e verificação de saúde dos servidores.
-- **`abr.py`**: Motor de decisão. Contém as políticas ABR (atualmente implementada: *Rate-Based Baseline*).
-- **`buffer.py`**: Modelo de buffer. Simula o consumo de vídeo e estima quantos segundos de reprodução restam.
-- **`metrics_collector.py`**: Abstração para log. Garante que todas as métricas sejam salvas no formato CSV exigido.
+- **`main.py`**: Orquestrador principal. Suporta execução individual ou em lote (modo `all`).
+- **`network.py`**: Gerenciador de rede com suporte a Failover, cálculo de latência e Jitter.
+- **`abr.py`**: Implementação das políticas:
+  - `BaselinePolicy`: Baseada puramente na vazão instantânea.
+  - `BufferBasedPolicy`: Baseada no nível de ocupação do buffer (Histerese).
+- **`buffer.py`**: Modelo de buffer multi-threaded que simula o consumo de vídeo em tempo real.
+- **`metrics_collector.py`**: Coletor de dados estatísticos exportados para CSV.
 
 ## 🛠️ Como Executar
 
@@ -21,29 +29,39 @@ O sistema simula o comportamento de um player de vídeo moderno (estilo DASH/HLS
 
 2. **Inicie o streaming:**
    ```bash
-   # Executa o cliente baixando 20 segmentos (padrão)
-   python3 client/main.py [numero_de_segmentos]
+   # Rodar uma política específica
+   python3 client/main.py -n 30 -p buffer
+
+   # Rodar TODAS as políticas e gerar gráficos comparativos automaticamente
+   python3 client/main.py -n 30 -p all -g
    ```
 
-3. **Gere os gráficos de desempenho:**
+3. **Gerar gráficos manualmente:**
    ```bash
    python3 graphs/generate_graphs.py
    ```
-   Os gráficos serão salvos na pasta `graphs/` como `vazao_vs_qualidade.png` e `nivel_buffer.png`.
 
-## 📊 Métricas Coletadas
-O sistema gera um arquivo `metrics/streaming_metrics.csv` contendo:
-- Vazão medida por segmento.
-- Qualidade selecionada e seu bitrate.
-- Nível do buffer no momento da decisão.
-- Eventos de rebuffering e stalls.
-- Estatísticas de failover.
+## 📊 Gráficos e Analytics
+Os resultados são organizados na pasta `graphs/`:
+- **`individual/`**: Desempenho detalhado (Vazão vs Bitrate) por política.
+- **`comparison/`**: Comparações diretas de eficiência:
+  - `comparativo_correlacao_grid.png`: Causa e efeito (Buffer vs Bitrate).
+  - `comparativo_eficiencia_iqs.png`: Índice de Qualidade Segura (com saturação de 20s).
+  - `comparativo_bitrate_acumulado.png`: Continuidade da experiência de visualização.
+
+## 📊 Métricas Coletadas (CSV)
+Os logs em `metrics/` incluem:
+- `vazão_kbps` e `bitrate_kbps`.
+- `jitter_ewma_ms`: Oscilação da rede suavizada.
+- `buffer_level_s`: Estado real do reservatório de vídeo.
+- `stall_duration_s`: Tempo exato de travamento do vídeo.
+- `failover_total`: Quantidade de trocas de servidor realizadas.
 
 ## 🗺️ Roadmap de Desenvolvimento
 - [x] **Fase 1**: Baseline Rate-Based e estrutura fundamental.
-- [ ] **Fase 2**: Implementação de Política 2 (Buffer-Based/Hysteresis) e Failover Automático.
-- [ ] **Fase 3**: Política 3 (Estatística/EWMA) e correlação com tráfego Wireshark.
+- [x] **Fase 2**: Política Buffer-Based, Failover Automático e Análise de Eficiência (IQS).
+- [ ] **Fase 3**: Política Estatística avançada e correlação Wireshark.
 
 ## 📝 Requisitos
-- Python 3.6+
-- Bibliotecas: `requests`, `pandas`, `matplotlib`.
+- Python 3.12+ (recomendado)
+- Bibliotecas: `requests`, `pandas`, `matplotlib`, `numpy`.

@@ -27,7 +27,9 @@ wheels/
 
 # Project Specific
 metrics/*.csv
-graphs/*.png
+graphs/**/*.png
+graphs/individual/
+graphs/comparison/
 
 # OS
 .DS_Store

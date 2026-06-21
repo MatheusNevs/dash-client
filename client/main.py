@@ -89,6 +89,9 @@ def run_client(num_segments, policy_name):
         # 4. Download finished, get results
         content, download_time, throughput, jitter = future.result()
         
+        if isinstance(policy, HeuristicPolicy):
+            policy.update_network_sample(throughput, download_time)
+        
         stall_duration = 0
         if stall_start is not None:
             stall_duration = time.perf_counter() - stall_start

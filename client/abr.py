@@ -133,22 +133,64 @@ class BufferBasedPolicy(ABRPolicy):
 
 class HeuristicPolicy(ABRPolicy):
     """
-    Heuristic/Statistical ABR policy (Policy 3).
-    A ser implementada na Fase 3.
+    Política 3 (Heurística / EWMA + Jitter Penalty).
+    Mantém estimativas suavizadas via EWMA de vazão e jitter.
     """
-    def __init__(self):
-        self.current_index = 0
+    def __init__(
+        self,
+        alpha: float = 0.3,
+        beta: float  = 0.3,
+        gamma: float = 1.5,
+        safety_factor: float = 0.92,
+    ) -> None:
+        self.alpha = alpha
+        self.beta  = beta
+        self.gamma = gamma
+        self.safety_factor = safety_factor
+
+        self._ewma_throughput = None
+        self._ewma_jitter = 0.0
+        self._last_download_time = None
+
+    def update_network_sample(self, throughput_kbps: float, download_time_s: float) -> None:
+        if self._ewma_throughput is None:
+            self._ewma_throughput = throughput_kbps
+        else:
+            self._ewma_throughput = self.alpha * throughput_kbps + (1.0 - self.alpha) * self._ewma_throughput
+
+        if self._last_download_time is not None:
+            raw_jitter = abs(download_time_s - self._last_download_time)
+        else:
+            raw_jitter = 0.0
+        self._last_download_time = download_time_s
+
+        self._ewma_jitter = self.beta * raw_jitter + (1.0 - self.beta) * self._ewma_jitter
 
     def select_quality(self, throughput_kbps, buffer_level, representations, **kwargs):
-        """
-        Seleciona a qualidade com base em heurísticas e estatísticas.
-        Sugestão: utilizar 'jitter_ewma' passado no **kwargs para penalizar estimativas instáveis.
-        """
-        # TODO: Implementar a lógica heurística (EWMA + Jitter, por exemplo).
-        # Extraindo o jitter (enviado pelo main.py):
-        # jitter = kwargs.get('jitter_ewma', 0.0)
-        
-        sorted_reprs = sorted(representations, key=lambda x: x['bitrate_kbps'])
-        
-        # Implementação "stub" (temporária) para não quebrar a execução
-        return sorted_reprs[0]
+        sorted_reprs = sorted(representations, key=lambda x: x["bitrate_kbps"])
+        if self._ewma_throughput is None or self._ewma_throughput <= 0:
+            available = throughput_kbps * (self.safety_factor * 0.7)
+        else:
+            s_hat = self._ewma_throughput
+            j_hat = self._ewma_jitter
+            jitter_kbps_equiv = j_hat * s_hat
+            penalty = max(0.0, 1.0 - self.gamma * jitter_kbps_equiv / (s_hat + 1e-9))
+            s_eff   = s_hat * penalty
+            available = s_eff * self.safety_factor
+
+        selected = sorted_reprs[0]
+        for rep in sorted_reprs:
+            if rep["bitrate_kbps"] <= available:
+                selected = rep
+            else:
+                break
+        return selected
+
+    @property
+    def ewma_throughput(self) -> float:
+        return self._ewma_throughput if self._ewma_throughput is not None else 0.0
+
+    @property
+    def ewma_jitter_ms(self) -> float:
+        """Jitter EWMA em milissegundos (para o CSV)."""
+        return self._ewma_jitter * 1000.0

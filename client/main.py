@@ -26,16 +26,8 @@ if __name__ == "__main__":
             print(f"Error loading GUI: {e}")
             sys.exit(1)
 
-    if args.policy == "all":
-        policies = ["baseline", "buffer", "heuristic"]
-        print(f"Executing batch run for all policies: {policies}")
-        for p in policies:
-            print(f"\n" + "="*50)
-            print(f"RUNNING POLICY: {p}")
-            print("="*50)
-            run_simulation(args.segments, p)
-    elif args.policy == "all_simultaneous":
-        print(f"\nExecuting simultaneous batch run for all policies")
+    if args.policy in ["all", "all_simultaneous"]:
+        print(f"\nExecuting simultaneous batch run for all policies (same network trace)")
         run_simulation(args.segments, "all_simultaneous")
     else:
         run_simulation(args.segments, args.policy)

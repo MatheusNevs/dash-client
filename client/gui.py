@@ -22,9 +22,8 @@ class DASHFrontend(ctk.CTk):
         self.title("DASH Adaptive Streaming Client - Live Benchmarking")
         self.geometry("1400x900")
 
-        self.sim_thread = None
-        self.active_sims = {}  # sim_id -> data dict
-        self.sim_frames = {}   # sim_id -> UI elements dict
+        self.active_runs = {}  # run_id -> dict
+        self.run_frames = {}   # run_id -> UI elements dict
         self.color_idx = 0
 
         self.setup_ui()
@@ -35,7 +34,7 @@ class DASHFrontend(ctk.CTk):
 
         # --- Sidebar ---
         self.sidebar = ctk.CTkFrame(self, width=250)
-        self.sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=10, pady=10)
+        self.sidebar.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
         ctk.CTkLabel(self.sidebar, text="Configurações", font=("Roboto", 20, "bold")).pack(pady=(20, 10))
 
@@ -46,7 +45,7 @@ class DASHFrontend(ctk.CTk):
 
         ctk.CTkLabel(self.sidebar, text="Política ABR:").pack(anchor="w", padx=10)
         self.opt_policy = ctk.CTkOptionMenu(self.sidebar, values=["baseline", "buffer", "heuristic", "todas (simultâneas)"])
-        self.opt_policy.set("heuristic")
+        self.opt_policy.set("todas (simultâneas)")
         self.opt_policy.pack(fill="x", padx=10, pady=(0, 10))
 
         ctk.CTkLabel(self.sidebar, text="Safety Factor (0.0 - 1.0):").pack(anchor="w", padx=10)
@@ -74,7 +73,7 @@ class DASHFrontend(ctk.CTk):
 
         # --- Main Area ---
         self.main_frame = ctk.CTkFrame(self)
-        self.main_frame.grid(row=0, column=1, sticky="nsew", padx=(0, 10), pady=(10, 0))
+        self.main_frame.grid(row=0, column=1, sticky="nsew", padx=(0, 10), pady=10)
         self.main_frame.grid_rowconfigure(0, weight=3)
         self.main_frame.grid_rowconfigure(1, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=1)
@@ -82,19 +81,6 @@ class DASHFrontend(ctk.CTk):
         # Dashboard Scrollable Area
         self.dashboard_scroll = ctk.CTkScrollableFrame(self.main_frame)
         self.dashboard_scroll.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-
-        # Comparison Section (Top)
-        self.comp_frame = ctk.CTkFrame(self.dashboard_scroll)
-        self.comp_frame.pack(fill="x", padx=5, pady=5)
-        
-        ctk.CTkLabel(self.comp_frame, text="Gráficos Comparativos (Simulações Ativas)", font=("Roboto", 18, "bold")).pack(pady=5)
-        
-        self.comp_fig, (self.comp_ax1, self.comp_ax2) = plt.subplots(1, 2, figsize=(10, 4), facecolor='#2b2b2b')
-        self.comp_fig.subplots_adjust(bottom=0.15)
-        self.apply_plot_styles(self.comp_ax1, self.comp_ax2, "Comparativo: Bitrate Selecionado", "Comparativo: Nível do Buffer")
-        
-        self.comp_canvas = FigureCanvasTkAgg(self.comp_fig, master=self.comp_frame)
-        self.comp_canvas.get_tk_widget().pack(fill="both", expand=True)
 
         # Container for Individual Simulation Rows
         self.sims_container = ctk.CTkFrame(self.dashboard_scroll, fg_color="transparent")
@@ -130,25 +116,25 @@ class DASHFrontend(ctk.CTk):
         self.log_box.insert("end", text + "\n")
         self.log_box.see("end")
 
-    def create_sim_row(self, sim_id, title):
+    def create_run_row(self, run_id, title):
         frame = ctk.CTkFrame(self.sims_container)
         frame.pack(fill="x", pady=10)
         
         header = ctk.CTkFrame(frame, fg_color="transparent")
         header.pack(fill="x", padx=10, pady=5)
-        ctk.CTkLabel(header, text=title, font=("Roboto", 15, "bold"), text_color=self.active_sims[sim_id]["color"]).pack(side="left")
+        ctk.CTkLabel(header, text=title, font=("Roboto", 15, "bold")).pack(side="left")
         
-        btn_del = ctk.CTkButton(header, text="X Remover", width=60, fg_color="#b22222", hover_color="#8b0000", command=lambda: self.delete_sim(sim_id))
+        btn_del = ctk.CTkButton(header, text="X Remover", width=60, fg_color="#b22222", hover_color="#8b0000", command=lambda: self.delete_run(run_id))
         btn_del.pack(side="right")
         
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 3.5), facecolor='#2b2b2b')
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4.5), facecolor='#2b2b2b')
         fig.subplots_adjust(bottom=0.15)
         self.apply_plot_styles(ax1, ax2, title1="Vazão vs Qualidade", title2="Nível do Buffer")
         
         canvas = FigureCanvasTkAgg(fig, master=frame)
         canvas.get_tk_widget().pack(fill="both", expand=True)
         
-        self.sim_frames[sim_id] = {
+        self.run_frames[run_id] = {
             "frame": frame,
             "fig": fig,
             "ax1": ax1,
@@ -156,77 +142,67 @@ class DASHFrontend(ctk.CTk):
             "canvas": canvas
         }
 
-    def delete_sim(self, sim_id):
-        if sim_id in self.active_sims:
-            del self.active_sims[sim_id]
-        if sim_id in self.sim_frames:
-            self.sim_frames[sim_id]["frame"].destroy()
-            del self.sim_frames[sim_id]
-        self.update_comparison_plot()
-        self.log(f"--- Simulação {sim_id[:4]} removida ---")
+    def delete_run(self, run_id):
+        if run_id in self.active_runs:
+            del self.active_runs[run_id]
+        if run_id in self.run_frames:
+            self.run_frames[run_id]["frame"].destroy()
+            del self.run_frames[run_id]
+        self.log(f"--- Simulação removida ---")
 
-    def _update_gui(self, sim_id, metric_data):
-        sim = self.active_sims.get(sim_id)
-        if not sim:
-            return
-            
-        sim["segments"].append(metric_data["segment"])
-        sim["vazao"].append(metric_data["vazão_kbps"])
-        sim["bitrate"].append(metric_data["bitrate_kbps"])
-        sim["buffer"].append(metric_data["buffer_level_s"])
+    def _update_gui(self, run_id, p_name, metric_data):
+        run = self.active_runs.get(run_id)
+        if not run: return
+        p_data = run["policies"].get(p_name)
+        if not p_data: return
+        
+        p_data["segments"].append(metric_data["segment"])
+        p_data["vazao"].append(metric_data["vazão_kbps"])
+        p_data["bitrate"].append(metric_data["bitrate_kbps"])
+        p_data["buffer"].append(metric_data["buffer_level_s"])
+        p_data["failover"].append(metric_data["failover_total"])
 
-        # Update Individual Row
-        ui = self.sim_frames.get(sim_id)
+        ui = self.run_frames.get(run_id)
         if ui:
             ui["ax1"].clear()
             ui["ax2"].clear()
             self.apply_plot_styles(ui["ax1"], ui["ax2"], "Vazão vs Qualidade", "Nível do Buffer")
             
-            ui["ax1"].plot(sim["segments"], sim["vazao"], color='tab:blue', linestyle='--', marker='o', label='Vazão', alpha=0.6)
-            ui["ax1"].step(sim["segments"], sim["bitrate"], color='tab:red', where='post', label='Bitrate', linewidth=2)
-            ui["ax1"].legend(loc="upper left", facecolor='#2b2b2b', labelcolor='white')
-            
-            ui["ax2"].plot(sim["segments"], sim["buffer"], color='green', linewidth=2)
-            ui["ax2"].axhline(y=2.0, color='r', linestyle='--', alpha=0.5)
-            
-            ui["canvas"].draw()
+            vazao_plotted = False
+            for name, data in run["policies"].items():
+                if not data["segments"]: continue
+                
+                if not vazao_plotted:
+                    ui["ax1"].plot(data["segments"], data["vazao"], color='white', linestyle='--', marker='o', label='Vazão da Rede', alpha=0.3)
+                    vazao_plotted = True
+                    
+                ui["ax1"].step(data["segments"], data["bitrate"], color=data["color"], where='post', label=f'Bitrate ({name})', linewidth=2)
+                ui["ax2"].plot(data["segments"], data["buffer"], color=data["color"], label=f'Buffer ({name})', linewidth=2)
+                
+                # Failovers
+                for idx, f_total in enumerate(data["failover"]):
+                    if idx > 0 and f_total > data["failover"][idx-1]:
+                        # Draw failover line only once per segment across all policies
+                        if name == list(run["policies"].keys())[0]:
+                            ui["ax1"].axvline(x=data["segments"][idx], color='red', linestyle=':', alpha=0.8, linewidth=2, label='Failover' if f_total==1 else "")
+                            ui["ax2"].axvline(x=data["segments"][idx], color='red', linestyle=':', alpha=0.8, linewidth=2)
 
-        self.update_comparison_plot()
+            ui["ax1"].legend(loc="upper left", facecolor='#2b2b2b', labelcolor='white', fontsize=9)
+            ui["ax2"].legend(loc="upper left", facecolor='#2b2b2b', labelcolor='white', fontsize=9)
+            ui["ax2"].axhline(y=2.0, color='r', linestyle='--', alpha=0.5)
+            ui["ax2"].axhline(y=30.0, color='cyan', linestyle=':', alpha=0.5, label='Max Buffer')
+            ui["canvas"].draw()
 
         q = metric_data['quality']
         t = metric_data['vazão_kbps']
         b = metric_data['buffer_level_s']
         s = metric_data['segment']
-        log_line = f"[{sim['name'][:15]}...] Seg {s:03d} | Qualidade: {q:5} | Vazão: {t:7.2f} kbps | Buffer: {b:5.2f}s"
+        log_line = f"[{p_name.upper()[:3]}] Seg {s:03d} | Qual:{q:5} | Vazão:{t:7.2f} | Buf:{b:5.2f}s | Failovers:{metric_data['failover_total']}"
         self.log(log_line)
 
-    def update_comparison_plot(self):
-        self.comp_ax1.clear()
-        self.comp_ax2.clear()
-        self.apply_plot_styles(self.comp_ax1, self.comp_ax2, "Comparativo: Bitrate Selecionado", "Comparativo: Nível do Buffer")
-        
-        has_data = False
-        for sim_id, sim in self.active_sims.items():
-            if not sim["segments"]: continue
-            has_data = True
-            color = sim["color"]
-            label = sim["name"]
-            
-            self.comp_ax1.step(sim["segments"], sim["bitrate"], color=color, where='post', linewidth=2, label=label)
-            self.comp_ax2.plot(sim["segments"], sim["buffer"], color=color, linewidth=2, label=label)
-            
-        if has_data:
-            self.comp_ax1.legend(loc="upper left", facecolor='#2b2b2b', labelcolor='white', fontsize=9)
-            self.comp_ax2.legend(loc="upper left", facecolor='#2b2b2b', labelcolor='white', fontsize=9)
-            
-        self.comp_ax2.axhline(y=2.0, color='r', linestyle='--', alpha=0.5)
-        self.comp_canvas.draw()
-
-    def _run_in_thread(self, policy_mode, num_segments, params, sim_ids_map):
+    def _run_in_thread(self, policy_mode, num_segments, params, run_id):
         def update_cb(p_name, metric_data):
-            sim_id = sim_ids_map.get(p_name)
-            if sim_id:
-                self.after(0, self._update_gui, sim_id, metric_data)
+            self.after(0, self._update_gui, run_id, p_name, metric_data)
 
         try:
             from simulator import run_simulation
@@ -253,31 +229,31 @@ class DASHFrontend(ctk.CTk):
 
         self.btn_start.configure(state="disabled")
         
-        sim_ids_map = {}
+        run_id = str(uuid.uuid4())
         
         if policy == "todas (simultâneas)":
             policy_mode = "all_simultaneous"
-            for p in ["baseline", "buffer", "heuristic"]:
-                sim_id = str(uuid.uuid4())
-                sim_ids_map[p] = sim_id
-                name = f"Heurística SIMULTÂNEA (sf={params['safety_factor']})" if p == "heuristic" else f"{p.capitalize()} SIMULTÂNEA (sf={params['safety_factor']})"
-                color = COLORS[self.color_idx % len(COLORS)]
-                self.color_idx += 1
-                self.active_sims[sim_id] = {"name": name, "color": color, "segments": [], "vazao": [], "bitrate": [], "buffer": []}
-                self.create_sim_row(sim_id, title=name)
-            self.log(f"\n--- INICIANDO SIMULAÇÃO EM LOTE SOBRE A MESMA VAZÃO ---")
+            title = f"Simulação Simultânea (Lote) - Segmentos: {num_segments}"
+            self.active_runs[run_id] = {"title": title, "policies": {}}
+            for i, p in enumerate(["baseline", "buffer", "heuristic"]):
+                self.active_runs[run_id]["policies"][p] = {
+                    "color": COLORS[i % len(COLORS)],
+                    "segments": [], "vazao": [], "bitrate": [], "buffer": [], "failover": []
+                }
+            self.log(f"\n--- INICIANDO LOTE SIMULTÂNEO ---")
         else:
             policy_mode = policy
-            sim_id = str(uuid.uuid4())
-            sim_ids_map[policy] = sim_id
-            name = f"Heurística (α={params['alpha']}, γ={params['gamma']}, sf={params['safety_factor']})" if policy == "heuristic" else f"{policy.capitalize()} (sf={params['safety_factor']})"
-            color = COLORS[self.color_idx % len(COLORS)]
+            title = f"Simulação Única ({policy.capitalize()}) - Segmentos: {num_segments}"
+            self.active_runs[run_id] = {"title": title, "policies": {}}
+            self.active_runs[run_id]["policies"][policy] = {
+                "color": COLORS[self.color_idx % len(COLORS)],
+                "segments": [], "vazao": [], "bitrate": [], "buffer": [], "failover": []
+            }
             self.color_idx += 1
-            self.active_sims[sim_id] = {"name": name, "color": color, "segments": [], "vazao": [], "bitrate": [], "buffer": []}
-            self.create_sim_row(sim_id, title=name)
-            self.log(f"\n--- INICIANDO SIMULAÇÃO [{name}] ---")
+            self.log(f"\n--- INICIANDO SIMULAÇÃO [{policy}] ---")
 
-        threading.Thread(target=self._run_in_thread, args=(policy_mode, num_segments, params, sim_ids_map), daemon=True).start()
+        self.create_run_row(run_id, title)
+        threading.Thread(target=self._run_in_thread, args=(policy_mode, num_segments, params, run_id), daemon=True).start()
 
 if __name__ == "__main__":
     app = DASHFrontend()

@@ -12,8 +12,11 @@ ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 COLORS = [
-    '#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#17becf', 
-    '#8c564b', '#e377c2', '#bcbd22', '#d62728', '#7f7f7f'
+    '#00f5d4', # Bright Cyan
+    '#f15bb5', # Hot Pink
+    '#fee440', # Bright Yellow
+    '#9b5de5', # Purple
+    '#ff9f1c'  # Bright Orange
 ]
 
 class DASHFrontend(ctk.CTk):
@@ -68,8 +71,16 @@ class DASHFrontend(ctk.CTk):
         self.ent_gamma.insert(0, "1.5")
         self.ent_gamma.pack(fill="x", padx=10, pady=(0, 20))
 
-        self.btn_start = ctk.CTkButton(self.sidebar, text="Iniciar Nova Simulação", command=self.start_simulation)
+        self.btn_start = ctk.CTkButton(self.sidebar, text="Iniciar Nova Simulação", command=self.start_simulation, fg_color="#2ca02c", hover_color="#208020")
         self.btn_start.pack(fill="x", padx=10, pady=10)
+
+        ctk.CTkLabel(self.sidebar, text="Teste de Failover (s):").pack(anchor="w", padx=10, pady=(20,0))
+        self.ent_failover = ctk.CTkEntry(self.sidebar)
+        self.ent_failover.insert(0, "5")
+        self.ent_failover.pack(fill="x", padx=10, pady=(0, 10))
+
+        self.btn_failover = ctk.CTkButton(self.sidebar, text="Derrubar Servidor A", fg_color="#b22222", hover_color="#8b0000", command=self.trigger_failover)
+        self.btn_failover.pack(fill="x", padx=10, pady=(0, 20))
 
         # --- Main Area ---
         self.main_frame = ctk.CTkFrame(self)
@@ -95,14 +106,15 @@ class DASHFrontend(ctk.CTk):
 
     def apply_plot_styles(self, ax1, ax2, title1, title2):
         for ax in (ax1, ax2):
-            ax.set_facecolor('#2b2b2b')
-            ax.tick_params(colors='white')
+            ax.set_facecolor('#1a1a1a')
+            ax.tick_params(colors='white', labelsize=10)
             ax.xaxis.label.set_color('white')
             ax.yaxis.label.set_color('white')
             ax.title.set_color('white')
+            ax.title.set_fontsize(14)
             for spine in ax.spines.values():
-                spine.set_color('gray')
-            ax.grid(True, alpha=0.3, color='gray')
+                spine.set_color('#444444')
+            ax.grid(True, alpha=0.4, color='#555555')
 
         ax1.set_title(title1)
         ax1.set_xlabel("Segmento")
@@ -127,12 +139,24 @@ class DASHFrontend(ctk.CTk):
         btn_del = ctk.CTkButton(header, text="X Remover", width=60, fg_color="#b22222", hover_color="#8b0000", command=lambda: self.delete_run(run_id))
         btn_del.pack(side="right")
         
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4.5), facecolor='#2b2b2b')
-        fig.subplots_adjust(bottom=0.15)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5), facecolor='#121212')
+        fig.subplots_adjust(bottom=0.25, left=0.08, right=0.95, top=0.88, wspace=0.2)
         self.apply_plot_styles(ax1, ax2, title1="Vazão vs Qualidade", title2="Nível do Buffer")
         
         canvas = FigureCanvasTkAgg(fig, master=frame)
-        canvas.get_tk_widget().pack(fill="both", expand=True)
+        canvas_widget = canvas.get_tk_widget()
+        canvas_widget.pack(fill="both", expand=True)
+
+        # Fix mouse scrolling when hovering over the graphs
+        def scroll_event(event):
+            if event.num == 4 or event.delta > 0:
+                self.dashboard_scroll._parent_canvas.yview_scroll(-1, "units")
+            elif event.num == 5 or event.delta < 0:
+                self.dashboard_scroll._parent_canvas.yview_scroll(1, "units")
+                
+        canvas_widget.bind("<MouseWheel>", scroll_event)
+        canvas_widget.bind("<Button-4>", scroll_event)
+        canvas_widget.bind("<Button-5>", scroll_event)
         
         self.run_frames[run_id] = {
             "frame": frame,
@@ -173,32 +197,25 @@ class DASHFrontend(ctk.CTk):
                 if not data["segments"]: continue
                 
                 if not vazao_plotted:
-                    ui["ax1"].plot(data["segments"], data["vazao"], color='white', linestyle='--', marker='o', label='Vazão da Rede', alpha=0.3)
+                    ui["ax1"].plot(data["segments"], data["vazao"], color='white', linestyle='--', marker='o', label='Vazão da Rede', alpha=0.4, linewidth=1.5)
                     vazao_plotted = True
                     
-                ui["ax1"].step(data["segments"], data["bitrate"], color=data["color"], where='post', label=f'Bitrate ({name})', linewidth=2)
-                ui["ax2"].plot(data["segments"], data["buffer"], color=data["color"], label=f'Buffer ({name})', linewidth=2)
+                ui["ax1"].step(data["segments"], data["bitrate"], color=data["color"], where='post', label=f'Bitrate ({name})', linewidth=3)
+                ui["ax2"].plot(data["segments"], data["buffer"], color=data["color"], label=f'Buffer ({name})', linewidth=3)
                 
                 # Failovers
                 for idx, f_total in enumerate(data["failover"]):
                     if idx > 0 and f_total > data["failover"][idx-1]:
-                        # Draw failover line only once per segment across all policies
                         if name == list(run["policies"].keys())[0]:
-                            ui["ax1"].axvline(x=data["segments"][idx], color='red', linestyle=':', alpha=0.8, linewidth=2, label='Failover' if f_total==1 else "")
-                            ui["ax2"].axvline(x=data["segments"][idx], color='red', linestyle=':', alpha=0.8, linewidth=2)
+                            ui["ax1"].axvline(x=data["segments"][idx], color='red', linestyle='-', alpha=0.9, linewidth=3, label='Failover' if f_total==1 else "")
+                            ui["ax2"].axvline(x=data["segments"][idx], color='red', linestyle='-', alpha=0.9, linewidth=3)
 
-            ui["ax1"].legend(loc="upper left", facecolor='#2b2b2b', labelcolor='white', fontsize=9)
-            ui["ax2"].legend(loc="upper left", facecolor='#2b2b2b', labelcolor='white', fontsize=9)
-            ui["ax2"].axhline(y=2.0, color='r', linestyle='--', alpha=0.5)
-            ui["ax2"].axhline(y=30.0, color='cyan', linestyle=':', alpha=0.5, label='Max Buffer')
+            # Put legend OUTSIDE the graph at the bottom
+            ui["ax1"].legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), facecolor='#1a1a1a', labelcolor='white', fontsize=11, ncol=2)
+            ui["ax2"].legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), facecolor='#1a1a1a', labelcolor='white', fontsize=11, ncol=2)
+            ui["ax2"].axhline(y=2.0, color='r', linestyle='--', alpha=0.7, linewidth=2)
+            ui["ax2"].axhline(y=30.0, color='cyan', linestyle=':', alpha=0.7, linewidth=2, label='Max Buffer')
             ui["canvas"].draw()
-
-        q = metric_data['quality']
-        t = metric_data['vazão_kbps']
-        b = metric_data['buffer_level_s']
-        s = metric_data['segment']
-        log_line = f"[{p_name.upper()[:3]}] Seg {s:03d} | Qual:{q:5} | Vazão:{t:7.2f} | Buf:{b:5.2f}s | Failovers:{metric_data['failover_total']}"
-        self.log(log_line)
 
     def _run_in_thread(self, policy_mode, num_segments, params, run_id):
         def update_cb(p_name, metric_data):
@@ -212,6 +229,50 @@ class DASHFrontend(ctk.CTk):
             self.after(0, self.log, f"\nERRO NA SIMULAÇÃO: {str(e)}")
         finally:
             self.after(0, lambda: self.btn_start.configure(state="normal"))
+
+    def trigger_failover(self):
+        try:
+            duration = int(self.ent_failover.get())
+        except:
+            self.log("ERRO: Tempo de failover inválido.")
+            return
+            
+        script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tests", "simulate_failure.sh"))
+        
+        # Cria um popup customizado para a senha
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Sudo Required")
+        dialog.geometry("300x150")
+        dialog.attributes("-topmost", True)
+        
+        ctk.CTkLabel(dialog, text=f"Senha sudo para derrubar servidor por {duration}s:").pack(pady=10)
+        entry = ctk.CTkEntry(dialog, show="*")
+        entry.pack(pady=10, padx=20, fill="x")
+        entry.focus()
+        
+        def on_submit(event=None):
+            password = entry.get()
+            dialog.destroy()
+            
+            def run_script():
+                self.after(0, self.log, f"\n--- Solicitando queda do Servidor A por {duration}s ---")
+                import subprocess
+                try:
+                    process = subprocess.Popen(["sudo", "-S", "bash", script_path, str(duration)], 
+                                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    stdout, stderr = process.communicate(input=password + '\n')
+                    if process.returncode != 0:
+                        self.after(0, self.log, f"❌ Falha de autenticação ou execução: {stderr.strip()}")
+                    else:
+                        self.after(0, self.log, f"✅ Regras do iptables aplicadas (Servidor A está fora).")
+                except Exception as e:
+                    self.after(0, self.log, f"❌ Erro fatal: {e}")
+            
+            threading.Thread(target=run_script, daemon=True).start()
+            
+        btn = ctk.CTkButton(dialog, text="Executar Failover", fg_color="#b22222", hover_color="#8b0000", command=on_submit)
+        btn.pack(pady=10)
+        dialog.bind("<Return>", on_submit)
 
     def start_simulation(self):
         try:

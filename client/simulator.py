@@ -107,7 +107,10 @@ def _run_single(num_segments, policy_name, gui_params=None, update_callback=None
         policy = BaselinePolicy(safety_factor=sf)
         
     metrics = MetricsCollector(os.path.join(os.path.dirname(__file__), output_csv))
-    last_throughput = 500.0 
+    
+    # Inicia com o menor bitrate possível para forçar um Cold Start conservador (240p/360p)
+    min_bitrate = manifest['representations'][0]['bitrate_kbps']
+    last_throughput = min_bitrate 
     jitter_ewma = 0.0
     alpha = 0.125 # Standard TCP-like EWMA alpha
     
@@ -234,11 +237,15 @@ def _run_simultaneous_batch(num_segments, gui_params, update_callback):
         def can_play(self): return self.buffer_level > 0
 
     states = {}
+    
+    # Inicia com o menor bitrate possível para forçar um Cold Start conservador (240p/360p)
+    min_bitrate = manifest['representations'][0]['bitrate_kbps']
+    
     for p_name in policies:
         output_csv = f"../metrics/streaming_metrics_{p_name}.csv"
         states[p_name] = {
             "buffer": SimulatedBufferManager(segment_duration),
-            "last_throughput": 500.0,
+            "last_throughput": min_bitrate,
             "jitter_ewma": 0.0,
             "last_sim_download_time": None,
             "metrics": MetricsCollector(os.path.join(os.path.dirname(__file__), output_csv))

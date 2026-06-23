@@ -8,7 +8,7 @@ O sistema simula o comportamento de um player de vídeo moderno (estilo DASH/HLS
 ## ✨ Novidades da Fase 3
 - **Política Heurística:** Uma nova política híbrida que utiliza média móvel exponencialmente ponderada (EWMA) para Vazão e Jitter, penalizando escolhas arriscadas baseadas na instabilidade da rede.
 - **Simulador de Rastreamento Matemático (Trace-Driven):** O backend agora atua como uma "caixa preta" capaz de injetar a exata mesma vazão capturada em múltiplas políticas simultaneamente para uma comparação 100% justa e livre de concorrência real.
-- **Dashboard GUI Interativo:** Nova interface gráfica Desktop (CustomTkinter) com plotagem de gráficos em tempo real, suporte a múltiplas linhas comparativas no mesmo gráfico, marcadores de eventos de rede (Failover), e configuração de parâmetros das heurísticas.
+- **Dashboard GUI Interativo:** Nova interface gráfica Desktop (CustomTkinter) com suporte a paleta *Neon Dark*, plotagem de gráficos em tempo real e consolidação de curvas comparativas nativas no mesmo eixo. Inclui formulário interno para **Teste de Failover**, que lança um popup seguro de autenticação (via `sudo`) para injetar quedas de servidor (regras no iptables) direto da tela.
 - **Limitação Dinâmica de Buffer:** O buffer agora é estritamente limitado a um máximo de 30 segundos de retenção, simulando com precisão o comportamento real de limite de memória (*memory limit*).
 
 ## 📁 Estrutura do Código (`client/`)

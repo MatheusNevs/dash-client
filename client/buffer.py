@@ -35,6 +35,8 @@ class BufferManager:
         """Adiciona um segmento inteiro (+2.0s) ao buffer instantaneamente."""
         with self._lock:
             self.buffer_level += self.segment_duration
+            if self.buffer_level > 30.0:
+                self.buffer_level = 30.0
             
             # Se estava travado e agora tem dados suficientes, volta a tocar
             if not self.is_playing and self.buffer_level >= self.segment_duration:

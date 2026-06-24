@@ -176,7 +176,23 @@ class HeuristicPolicy(ABRPolicy):
             jitter_kbps_equiv = j_hat * s_hat
             penalty = max(0.0, 1.0 - self.gamma * jitter_kbps_equiv / (s_hat + 1e-9))
             s_eff   = s_hat * penalty
-            available = s_eff * self.safety_factor
+            
+            # --- Integração do Nível de Buffer na Heurística ---
+            # Se o buffer estiver crítico, forçamos um conservadorismo extremo.
+            # Se o buffer estiver folgado, damos um bônus de confiança na vazão.
+            buffer_multiplier = 1.0
+            if buffer_level < 5.0:
+                buffer_multiplier = 0.5   # Pânico: corta a estimativa pela metade (Prioriza sobrevivência)
+            elif buffer_level > 20.0:
+                buffer_multiplier = 1.3   # Muita folga: 30% de bônus na estimativa (Ousadia)
+            elif buffer_level > 15.0:
+                buffer_multiplier = 1.15  # Conforto: 15% de bônus
+                
+            available = s_eff * self.safety_factor * buffer_multiplier
+
+        # Retorna a menor qualidade se o buffer for absurdamente baixo (Prevenção total de Stall)
+        if buffer_level < 2.0:
+            return sorted_reprs[0]
 
         selected = sorted_reprs[0]
         for rep in sorted_reprs:

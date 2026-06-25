@@ -152,6 +152,8 @@ class HeuristicPolicy(ABRPolicy):
         self._ewma_jitter = 0.0
         self._last_download_time = None
 
+        self.COMFORT_BUFFER = 15.0 
+
     def update_network_sample(self, throughput_kbps: float, download_time_s: float) -> None:
         if self._ewma_throughput is None:
             self._ewma_throughput = throughput_kbps
@@ -174,12 +176,12 @@ class HeuristicPolicy(ABRPolicy):
             s_hat = self._ewma_throughput
             j_hat = self._ewma_jitter
             jitter_kbps_equiv = j_hat * s_hat
-            penalty = max(0.0, 1.0 - self.gamma * jitter_kbps_equiv / (s_hat + 1e-9))
-            s_eff   = s_hat * penalty
+            raw_penalty = max(0.0, 1.0 - self.gamma * jitter_kbps_equiv / (s_hat + 1e-9))
             
-            # --- Integração do Nível de Buffer na Heurística ---
             # Se o buffer estiver crítico, forçamos um conservadorismo extremo.
             # Se o buffer estiver folgado, damos um bônus de confiança na vazão.
+
+            #s_eff   = s_hat * penalty
             buffer_multiplier = 1.0
             if buffer_level < 5.0:
                 buffer_multiplier = 0.5   # Pânico: corta a estimativa pela metade (Prioriza sobrevivência)
@@ -187,8 +189,20 @@ class HeuristicPolicy(ABRPolicy):
                 buffer_multiplier = 1.3   # Muita folga: 30% de bônus na estimativa (Ousadia)
             elif buffer_level > 15.0:
                 buffer_multiplier = 1.15  # Conforto: 15% de bônus
-                
-            available = s_eff * self.safety_factor * buffer_multiplier
+            
+            #available = s_eff * self.safety_factor * buffer_multiplier
+
+            # Calcula a saúde do buffer comparado com o COMFORT_BUFFER
+            # A saúde vai ser usada para compensar a penalidade dada pelo jitter
+            buffer_health = min(1.0, max(0.0, buffer_level / self.COMFORT_BUFFER))
+
+            buffer_confiability = 0.95
+
+            penalty = raw_penalty + (1.0 - raw_penalty) * buffer_health * buffer_confiability
+
+            s_eff   = s_hat * penalty           
+            
+            available = s_eff * self.safety_factor
 
         # Retorna a menor qualidade se o buffer for absurdamente baixo (Prevenção total de Stall)
         if buffer_level < 2.0:

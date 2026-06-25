@@ -141,6 +141,33 @@ def generate_correlation_grid(df_base, df_buff, df_heur, output_dir):
     plt.savefig(os.path.join(output_dir, 'comparativo_correlacao_grid.png'))
     plt.close()
 
+def generate_jitter_comparison(df_base, df_buff, df_heur, output_dir):
+    """Gera gráfico de Jitter EWMA (Exigência do Roteiro Fase 3)."""
+    plt.figure(figsize=(12, 6))
+    
+    # Adicionamos a linha de failover baseando-se no df_base
+    failover_segments = []
+    if 'server_id' in df_base.columns:
+        df_base['server_changed'] = df_base['server_id'] != df_base['server_id'].shift(1)
+        failover_segments = df_base[df_base['server_changed'] & (df_base.index > 0)]['segment'].tolist()
+        
+    for seg in failover_segments:
+        plt.axvline(x=seg, color='red', linestyle='--', linewidth=2, label='Failover' if seg == failover_segments[0] else "")
+    
+    plt.plot(df_base['segment'], df_base['jitter_ewma_ms'], label='Baseline', color='orange', linestyle='--', alpha=0.5)
+    plt.plot(df_buff['segment'], df_buff['jitter_ewma_ms'], label='Política 2', color='green', linewidth=2, alpha=0.7)
+    
+    if df_heur is not None:
+        plt.plot(df_heur['segment'], df_heur['jitter_ewma_ms'], label='Heurística', color='purple', linewidth=3)
+        
+    plt.xlabel('Segmento')
+    plt.ylabel('Jitter EWMA (ms)')
+    plt.title('Variação de Atraso Suavizada (Jitter EWMA) ao longo do Tempo')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(os.path.join(output_dir, 'comparativo_jitter_ewma.png'))
+    plt.close()
+
 def generate_comparison_graphs(csv_baseline, csv_buffer, csv_heuristic, output_base_dir):
     if not os.path.exists(csv_baseline) or not os.path.exists(csv_buffer): return
     df_base, df_buff = pd.read_csv(csv_baseline), pd.read_csv(csv_buffer)
@@ -151,6 +178,7 @@ def generate_comparison_graphs(csv_baseline, csv_buffer, csv_heuristic, output_b
     generate_correlation_grid(df_base, df_buff, df_heur, comp_dir)
     generate_iqs_comparison(df_base, df_buff, df_heur, comp_dir)
     generate_cumulative_bitrate_comparison(df_base, df_buff, df_heur, comp_dir)
+    generate_jitter_comparison(df_base, df_buff, df_heur, comp_dir)
 
 if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))

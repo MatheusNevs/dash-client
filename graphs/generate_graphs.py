@@ -40,8 +40,21 @@ def generate_individual_graphs(csv_path, output_base_dir, policy_name):
     ax2.set_ylabel('Qualidade (Resolução)')
     ax2.tick_params(axis='y', labelcolor='tab:red')
 
-    plt.title(f'Vazão vs Qualidade: {policy_name.upper()} (com Failover)')
-    ax1.legend(loc='upper left')
+    # Terceiro eixo Y para o Jitter EWMA
+    if 'jitter_ewma_ms' in df.columns:
+        ax3 = ax1.twinx()
+        ax3.spines['right'].set_position(('outward', 60))
+        ax3.plot(df['segment'], df['jitter_ewma_ms'], label='Jitter EWMA (ms)', color='purple', linestyle=':', linewidth=2)
+        ax3.set_ylabel('Jitter EWMA (ms)', color='purple')
+        ax3.tick_params(axis='y', labelcolor='purple')
+        
+        lines_1, labels_1 = ax1.get_legend_handles_labels()
+        lines_3, labels_3 = ax3.get_legend_handles_labels()
+        ax1.legend(lines_1 + lines_3, labels_1 + labels_3, loc='upper left')
+    else:
+        ax1.legend(loc='upper left')
+
+    plt.title(f'Vazão vs Qualidade vs Jitter: {policy_name.upper()}')
     fig.tight_layout()
     plt.savefig(os.path.join(policy_dir, 'vazao_vs_qualidade.png'))
     plt.close()

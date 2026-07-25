@@ -1,3 +1,11 @@
+"""
+Interface Gráfica Interativa Desktop (CustomTkinter GUI).
+
+Este módulo implementa o Dashboard Desktop interativo para controle de simulações,
+visualização em tempo real de vazão, qualidade (bitrate) e buffer com gráficos Matplotlib,
+além de controle para injeção de testes de failover.
+"""
+
 import os
 import sys
 import threading
@@ -11,31 +19,38 @@ matplotlib.use('TkAgg')
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
+# Paleta de cores vibrantes para visualização gráfica
 COLORS = [
-    '#00f5d4', # Bright Cyan
-    '#f15bb5', # Hot Pink
-    '#fee440', # Bright Yellow
-    '#9b5de5', # Purple
-    '#ff9f1c'  # Bright Orange
+    '#00f5d4',  # Ciano Brilhante
+    '#f15bb5',  # Rosa Choque
+    '#fee440',  # Amarelo Vivo
+    '#9b5de5',  # Roxo Neon
+    '#ff9f1c'   # Laranja Vibrante
 ]
 
 class DASHFrontend(ctk.CTk):
+    """
+    Aplicação principal de interface gráfica Desktop para o Cliente DASH ABR.
+    """
+    
     def __init__(self):
+        """Inicializa a janela da GUI e os componentes visuais."""
         super().__init__()
         self.title("DASH Adaptive Streaming Client - Live Benchmarking")
         self.geometry("1400x900")
 
-        self.active_runs = {}  # run_id -> dict
-        self.run_frames = {}   # run_id -> UI elements dict
+        self.active_runs = {}  # Dicionário: run_id -> dados da simulação
+        self.run_frames = {}   # Dicionário: run_id -> elementos da UI
         self.color_idx = 0
 
         self.setup_ui()
 
     def setup_ui(self):
+        """Constrói a estrutura de layout principal (Barra Lateral, Painel de Gráficos e Console de Logs)."""
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
 
-        # --- Sidebar ---
+        # --- Barra Lateral de Configurações ---
         self.sidebar = ctk.CTkFrame(self, width=250)
         self.sidebar.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
@@ -82,22 +97,22 @@ class DASHFrontend(ctk.CTk):
         self.btn_failover = ctk.CTkButton(self.sidebar, text="Derrubar Servidor A", fg_color="#b22222", hover_color="#8b0000", command=self.trigger_failover)
         self.btn_failover.pack(fill="x", padx=10, pady=(0, 20))
 
-        # --- Main Area ---
+        # --- Áreas Principais (Dashboard de Gráficos e Console de Logs) ---
         self.main_frame = ctk.CTkFrame(self)
         self.main_frame.grid(row=0, column=1, sticky="nsew", padx=(0, 10), pady=10)
         self.main_frame.grid_rowconfigure(0, weight=3)
         self.main_frame.grid_rowconfigure(1, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=1)
 
-        # Dashboard Scrollable Area
+        # Painel Rolável para Exibição dos Gráficos
         self.dashboard_scroll = ctk.CTkScrollableFrame(self.main_frame)
         self.dashboard_scroll.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
-        # Container for Individual Simulation Rows
+        # Container para Linhas de Simulação
         self.sims_container = ctk.CTkFrame(self.dashboard_scroll, fg_color="transparent")
         self.sims_container.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # Logs Frame
+        # Caixa de Texto para Exibição de Logs de Execução
         self.log_frame = ctk.CTkFrame(self.main_frame)
         self.log_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
         
@@ -105,6 +120,15 @@ class DASHFrontend(ctk.CTk):
         self.log_box.pack(fill="both", expand=True, padx=5, pady=5)
 
     def apply_plot_styles(self, ax1, ax2, title1, title2):
+        """
+        Aplica o tema de estilo escuro (Dark Neon) aos eixos dos gráficos Matplotlib.
+
+        Args:
+            ax1 (matplotlib.axes.Axes): Eixo para o gráfico de Vazão vs Qualidade.
+            ax2 (matplotlib.axes.Axes): Eixo para o gráfico de Nível de Buffer.
+            title1 (str): Título do primeiro gráfico.
+            title2 (str): Título do segundo gráfico.
+        """
         for ax in (ax1, ax2):
             ax.set_facecolor('#1a1a1a')
             ax.tick_params(colors='white', labelsize=10)
@@ -125,10 +149,18 @@ class DASHFrontend(ctk.CTk):
         ax2.set_ylabel("Segundos")
 
     def log(self, text):
+        """Adiciona uma mensagem de texto ao console de logs da GUI."""
         self.log_box.insert("end", text + "\n")
         self.log_box.see("end")
 
     def create_run_row(self, run_id, title):
+        """
+        Cria uma linha visual no painel com gráficos Matplotlib para uma nova simulação.
+
+        Args:
+            run_id (str): Identificador único da simulação.
+            title (str): Título descritivo exibido no cabeçalho da linha.
+        """
         frame = ctk.CTkFrame(self.sims_container)
         frame.pack(fill="x", pady=10)
         
@@ -147,7 +179,7 @@ class DASHFrontend(ctk.CTk):
         canvas_widget = canvas.get_tk_widget()
         canvas_widget.pack(fill="both", expand=True)
 
-        # Fix mouse scrolling when hovering over the graphs
+        # Ajusta a rolagem do mouse ao passar o cursor sobre os gráficos
         def scroll_event(event):
             if event.num == 4 or event.delta > 0:
                 self.dashboard_scroll._parent_canvas.yview_scroll(-1, "units")
@@ -167,6 +199,7 @@ class DASHFrontend(ctk.CTk):
         }
 
     def delete_run(self, run_id):
+        """Remove os gráficos e limpa os dados de uma simulação específica."""
         if run_id in self.active_runs:
             del self.active_runs[run_id]
         if run_id in self.run_frames:
@@ -175,6 +208,14 @@ class DASHFrontend(ctk.CTk):
         self.log(f"--- Simulação removida ---")
 
     def _update_gui(self, run_id, p_name, metric_data):
+        """
+        Callback que atualiza dinamicamente as curvas dos gráficos em tempo real.
+
+        Args:
+            run_id (str): ID da simulação.
+            p_name (str): Nome da política.
+            metric_data (dict): Dicionário com dados do segmento recém baixado.
+        """
         run = self.active_runs.get(run_id)
         if not run: return
         p_data = run["policies"].get(p_name)
@@ -203,14 +244,14 @@ class DASHFrontend(ctk.CTk):
                 ui["ax1"].step(data["segments"], data["bitrate"], color=data["color"], where='post', label=f'Bitrate ({name})', linewidth=3)
                 ui["ax2"].plot(data["segments"], data["buffer"], color=data["color"], label=f'Buffer ({name})', linewidth=3)
                 
-                # Failovers
+                # Renderiza marcadores verticais vermelhos tracejados no momento do failover
                 for idx, f_total in enumerate(data["failover"]):
                     if idx > 0 and f_total > data["failover"][idx-1]:
                         if name == list(run["policies"].keys())[0]:
                             ui["ax1"].axvline(x=data["segments"][idx], color='red', linestyle='-', alpha=0.9, linewidth=3, label='Failover' if f_total==1 else "")
                             ui["ax2"].axvline(x=data["segments"][idx], color='red', linestyle='-', alpha=0.9, linewidth=3)
 
-            # Put legend OUTSIDE the graph at the bottom
+            # Posiciona as legendas fora da área do gráfico
             ui["ax1"].legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), facecolor='#1a1a1a', labelcolor='white', fontsize=11, ncol=2)
             ui["ax2"].legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), facecolor='#1a1a1a', labelcolor='white', fontsize=11, ncol=2)
             ui["ax2"].axhline(y=2.0, color='r', linestyle='--', alpha=0.7, linewidth=2)
@@ -218,6 +259,7 @@ class DASHFrontend(ctk.CTk):
             ui["canvas"].draw()
 
     def _run_in_thread(self, policy_mode, num_segments, params, run_id):
+        """Executa o motor de simulação em uma thread separada para não congelar a GUI."""
         def update_cb(p_name, metric_data):
             self.after(0, self._update_gui, run_id, p_name, metric_data)
 
@@ -231,6 +273,7 @@ class DASHFrontend(ctk.CTk):
             self.after(0, lambda: self.btn_start.configure(state="normal"))
 
     def trigger_failover(self):
+        """Abre um modal para autenticação `sudo` e dispara injeção de queda de servidor (iptables)."""
         try:
             duration = int(self.ent_failover.get())
         except:
@@ -239,9 +282,9 @@ class DASHFrontend(ctk.CTk):
             
         script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tests", "simulate_failure.sh"))
         
-        # Cria um popup customizado para a senha
+        # Modal seguro para digitação da senha sudo
         dialog = ctk.CTkToplevel(self)
-        dialog.title("Sudo Required")
+        dialog.title("Autenticação Sudo Requerida")
         dialog.geometry("300x150")
         dialog.attributes("-topmost", True)
         
@@ -275,6 +318,7 @@ class DASHFrontend(ctk.CTk):
         dialog.bind("<Return>", on_submit)
 
     def start_simulation(self):
+        """Coleta as configurações do painel lateral e inicia uma nova rodada de simulação."""
         try:
             num_segments = int(self.ent_segments.get())
             policy = self.opt_policy.get()
@@ -319,3 +363,4 @@ class DASHFrontend(ctk.CTk):
 if __name__ == "__main__":
     app = DASHFrontend()
     app.mainloop()
+
